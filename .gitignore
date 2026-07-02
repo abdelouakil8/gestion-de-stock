@@ -1,0 +1,21 @@
+# Virtual environments
+.venv/
+venv/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Local data & secrets
+*.db
+data/
+logs/
+.env
+
+# Build outputs
+dist/
+build/
+*.spec

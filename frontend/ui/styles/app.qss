@@ -1,0 +1,3 @@
+/* Global stylesheet — intentionally empty at scaffold stage.
+   The design system is written by hand here; color/spacing values come from
+   tokens.py (interpolated at load time), never hardcoded in this file. */

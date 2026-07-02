@@ -1,0 +1,22 @@
+# Tooling configuration only — dependencies live in requirements*.txt
+# (this project ships as a desktop app, not as an installable library).
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+src = ["backend", "frontend"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# The frontend entrypoint must extend sys.path before importing the backend.
+"frontend/main.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["backend"]

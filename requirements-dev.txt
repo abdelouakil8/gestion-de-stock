@@ -1,0 +1,6 @@
+# Development & packaging tools
+pytest>=8.0
+ruff>=0.5
+black>=24.0
+pre-commit>=3.7
+pyinstaller>=6.6
