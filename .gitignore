@@ -19,3 +19,4 @@ logs/
 dist/
 build/
 *.spec
+installer/Output/

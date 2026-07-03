@@ -1,6 +1,9 @@
 """Phase 1 definition-of-done: every model can be created, fetched and
 soft-deleted — deleted_at gets set, the row still exists in the table, and
-default service queries exclude it. Plus exactness guarantees of Money."""
+default service queries exclude it. Plus exactness guarantees of Money.
+
+Adapted for Phase 6: PriceTier is gone (named price levels supersede it);
+Customer, Payment and StoreSettings joined the data layer."""
 
 from decimal import Decimal
 
@@ -8,13 +11,13 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.exc import StatementError
 
-from app.models import Category, PriceTier, Product, Sale, SaleItem, Store
+from app.models import Category, Customer, Payment, Product, Sale, SaleItem, Store
 from app.schemas.category import CategoryCreate
-from app.schemas.price_tier import PriceTierCreate
+from app.schemas.customer import CustomerCreate
 from app.schemas.product import ProductCreate
 from app.schemas.sale import SaleCreate, SaleItemCreate
 from app.schemas.store import StoreCreate
-from app.services import categories, price_tiers, products, sales, stores
+from app.services import categories, customers, products, sales, stores
 
 
 def make_store(db) -> Store:
@@ -36,9 +39,18 @@ def make_product(db, store: Store, category: Category | None = None) -> Product:
             name="Eau minérale 1.5L",
             barcode="6130000000015",
             cost_price=Decimal("25.00"),
-            min_sale_price=Decimal("30.00"),
+            price_detail=Decimal("40.00"),
+            price_gros=Decimal("37.50"),
+            price_super_gros=Decimal("30.00"),
             stock_quantity=100,
         ),
+    )
+
+
+def make_customer(db, store: Store, phone="0550123456") -> Customer:
+    return customers.create_customer(
+        db,
+        CustomerCreate(store_id=store.id, name="Ali Benali", phone=phone),
     )
 
 
@@ -77,6 +89,8 @@ def test_product_crud_and_soft_delete(db):
     fetched = products.get_product(db, product.id)
     assert fetched is not None
     assert fetched.category_id == category.id
+    assert fetched.low_stock_threshold == 5  # default
+    assert fetched.image_path is None
     assert len(products.list_products(db, store.id)) == 1
 
     products.soft_delete_product(db, product.id)
@@ -94,8 +108,10 @@ def test_product_money_is_exact_decimal(db):
     fetched = products.get_product(db, product.id)
     assert isinstance(fetched.cost_price, Decimal)
     assert fetched.cost_price == Decimal("25.00")
-    assert isinstance(fetched.min_sale_price, Decimal)
-    assert fetched.min_sale_price == Decimal("30.00")
+    assert isinstance(fetched.price_detail, Decimal)
+    assert fetched.price_detail == Decimal("40.00")
+    assert fetched.price_gros == Decimal("37.50")
+    assert fetched.price_super_gros == Decimal("30.00")
 
 
 def test_money_rejects_float(db):
@@ -109,36 +125,28 @@ def test_money_rejects_float(db):
                 name="Produit flottant",
                 barcode=None,
                 cost_price=19.99,
-                min_sale_price=Decimal("30.00"),
+                price_detail=Decimal("40.00"),
+                price_gros=Decimal("40.00"),
+                price_super_gros=Decimal("30.00"),
                 stock_quantity=1,
+                low_stock_threshold=5,
                 is_active=True,
             ),
         )
     db.rollback()
 
 
-def test_price_tier_crud_and_ordering(db):
+def test_customer_crud_and_soft_delete(db):
     store = make_store(db)
-    product = make_product(db, store)
-    for qty, price in [(10, "35.00"), (1, "40.00"), (6, "37.50")]:
-        price_tiers.create_price_tier(
-            db,
-            PriceTierCreate(
-                store_id=store.id,
-                product_id=product.id,
-                min_quantity=qty,
-                unit_price=Decimal(price),
-            ),
-        )
+    customer = make_customer(db, store)
+    assert customers.get_customer(db, customer.id) is not None
+    assert len(customers.list_customers(db, store.id)) == 1
 
-    tiers = price_tiers.list_price_tiers(db, product.id)
-    assert [t.min_quantity for t in tiers] == [1, 6, 10]  # ascending threshold
-
-    price_tiers.soft_delete_price_tier(db, tiers[0].id)
-    assert tiers[0].deleted_at is not None
-    assert db.scalar(select(func.count()).select_from(PriceTier)) == 3
-    assert price_tiers.get_price_tier(db, tiers[0].id) is None
-    assert len(price_tiers.list_price_tiers(db, product.id)) == 2
+    customers.soft_delete_customer(db, customer.id)
+    assert customer.deleted_at is not None
+    assert db.scalar(select(func.count()).select_from(Customer)) == 1
+    assert customers.get_customer(db, customer.id) is None
+    assert customers.list_customers(db, store.id) == []
 
 
 def test_sale_with_items_crud_and_soft_delete(db):
@@ -166,6 +174,7 @@ def test_sale_with_items_crud_and_soft_delete(db):
     assert len(fetched.items) == 1
     assert fetched.items[0].line_total == Decimal("120.00")
     assert fetched.items[0].store_id == store.id
+    assert fetched.items[0].price_level == "detail"  # default level
     assert len(sales.list_sale_items(db, sale.id)) == 1
 
     sales.soft_delete_sale(db, sale.id)
@@ -176,3 +185,29 @@ def test_sale_with_items_crud_and_soft_delete(db):
     assert sales.get_sale(db, sale.id) is None
     assert sales.list_sales(db, store.id) == []
     assert sales.list_sale_items(db, sale.id) == []
+
+
+def test_payment_rows_are_financial_records(db):
+    """Payments persist physically and Money round-trips exactly."""
+    from app.schemas.sale import CartItem, CheckoutRequest, PaymentInfo
+
+    store = make_store(db)
+    product = make_product(db, store)
+    customer = make_customer(db, store)
+    sale = sales.finalize_sale(
+        db,
+        CheckoutRequest(
+            store_id=store.id,
+            items=[CartItem(product_id=product.id, quantity=1)],
+            payment=PaymentInfo(
+                mode="partial",
+                amount_paid=Decimal("10.50"),
+                customer_id=customer.id,
+            ),
+        ),
+    )
+    db.expire_all()
+    payment = db.scalar(select(Payment).where(Payment.sale_id == sale.id))
+    assert isinstance(payment.amount, Decimal)
+    assert payment.amount == Decimal("10.50")
+    assert db.scalar(select(func.count()).select_from(Payment)) == 1

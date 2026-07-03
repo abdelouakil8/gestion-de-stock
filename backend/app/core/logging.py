@@ -2,15 +2,16 @@ import sys
 
 from loguru import logger
 
-from app.core.config import PROJECT_ROOT, settings
+from app.core.config import RUNTIME_DIR, settings
 
 
 def configure_logging() -> None:
     """Route application logging through loguru: console + rotating file."""
     logger.remove()
-    logger.add(sys.stderr, level=settings.log_level)
+    if sys.stderr is not None:  # absent in a windowed (no-console) build
+        logger.add(sys.stderr, level=settings.log_level)
     logger.add(
-        PROJECT_ROOT / "logs" / "app.log",
+        RUNTIME_DIR / "logs" / "app.log",
         level=settings.log_level,
         rotation="10 MB",
         retention=10,

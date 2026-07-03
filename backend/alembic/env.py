@@ -1,8 +1,10 @@
 from logging.config import fileConfig
+from pathlib import Path
+
+from sqlalchemy import engine_from_config, pool
+from sqlalchemy.engine import make_url
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
-
 from app.core.config import settings
 from app.models import Base  # importing app.models registers every model
 
@@ -12,6 +14,11 @@ config = context.config
 
 # Database URL comes from application settings (.env), never hardcoded.
 config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
+
+# For file-based SQLite, make sure the containing directory exists.
+_url = make_url(settings.database_url)
+if _url.get_backend_name() == "sqlite" and _url.database:
+    Path(_url.database).parent.mkdir(parents=True, exist_ok=True)
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:

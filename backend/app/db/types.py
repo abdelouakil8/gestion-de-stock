@@ -35,4 +35,5 @@ class Money(TypeDecorator):
     def process_result_value(self, value, dialect):
         if value is None:
             return None
-        return Decimal(value) / _CENTS
+        # Quantize so 3750 -> 37.50 (division alone would normalize to 37.5).
+        return (Decimal(value) / _CENTS).quantize(_TWO_PLACES)

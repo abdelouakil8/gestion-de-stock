@@ -1,51 +1,70 @@
 """Desktop entrypoint.
 
 Boots the local FastAPI service on a background thread (loopback only),
-waits for it to become reachable, then shows the main window. The UI never
-touches the database — every data operation goes through the local HTTP API.
+waits for it to become reachable, gates the app behind the local PIN, then
+shows the main window. The UI never touches the database — every data
+operation goes through the local HTTP API, always from a worker thread once
+the window exists (startup-only blocking happens before any UI is shown).
 """
 
 import os
 import sys
 import threading
 import time
+import traceback
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "backend"))
 
-import httpx
-import uvicorn
-from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QApplication, QMessageBox
 
-from app.core.config import settings
-from app.main import app as fastapi_app
-from ui import strings
-from ui.screens.main_window import MainWindow
+def _crash_log(stage: str) -> Path:
+    """A packaged app must never die silently: dump the traceback where a
+    technician can find it (%LOCALAPPDATA%/GestionStockPOS/logs/crash.log)."""
+    base = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "GestionStockPOS"
+    log_dir = base / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    path = log_dir / "crash.log"
+    path.write_text(f"[{stage}]\n{traceback.format_exc()}", encoding="utf-8")
+    return path
 
-STYLES_DIR = Path(__file__).resolve().parent / "ui" / "styles"
+
+try:
+    import httpx
+    import uvicorn
+    from loguru import logger
+    from PySide6.QtCore import Qt, QTimer
+    from PySide6.QtWidgets import QApplication, QMessageBox
+
+    from app.core.config import settings
+    from app.main import app as fastapi_app
+    from services.api_client import ApiClient, ApiError
+    from ui import strings
+    from ui.screens.login import LoginDialog
+    from ui.screens.main_window import MainWindow
+    from ui.styles.tokens import render_qss
+except Exception:
+    _crash_log("import")
+    raise
+
+DEFAULT_STORE_NAME = "Ma Boutique"
 
 
 def start_api_server() -> uvicorn.Server:
     """Run uvicorn on a daemon thread inside this same process."""
     config = uvicorn.Config(
         fastapi_app,
-        host=settings.api_host,
+        host=settings.api_host,  # loopback only — enforced in Settings
         port=settings.api_port,
-        log_config=None,  # logging is configured by the app itself (loguru)
+        log_config=None,
     )
     server = uvicorn.Server(config)
     threading.Thread(target=server.run, name="local-api", daemon=True).start()
     return server
 
 
-def wait_for_api(timeout_seconds: float = 15.0) -> bool:
-    """Poll the liveness endpoint until the API answers or the timeout hits.
-
-    Startup-only blocking wait: no window exists yet, so nothing freezes.
-    Once the UI is up, every API call must go through a background worker.
-    """
+def wait_for_api(timeout_seconds: float = 20.0) -> bool:
+    """Startup-only blocking wait: no window exists yet, nothing freezes."""
     base_url = f"http://{settings.api_host}:{settings.api_port}"
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
@@ -57,13 +76,25 @@ def wait_for_api(timeout_seconds: float = 15.0) -> bool:
     return False
 
 
+def bootstrap_store(api: ApiClient) -> dict:
+    """First run: make sure one store exists (startup phase, pre-UI)."""
+    stores = api.list_stores()
+    if stores:
+        return stores[0]
+    return api.create_store(DEFAULT_STORE_NAME)
+
+
 def main() -> int:
     server = start_api_server()
 
     qt_app = QApplication(sys.argv)
     qt_app.setApplicationName(strings.APP_TITLE)
-    qt_app.setStyleSheet((STYLES_DIR / "app.qss").read_text(encoding="utf-8"))
+    qt_app.setStyleSheet(render_qss())
     qt_app.aboutToQuit.connect(lambda: setattr(server, "should_exit", True))
+
+    # Dev toggle to verify RTL mirroring before the Arabic language update.
+    if os.environ.get("POS_FORCE_RTL"):
+        qt_app.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
     if not wait_for_api():
         QMessageBox.critical(
@@ -71,15 +102,46 @@ def main() -> int:
         )
         return 1
 
-    window = MainWindow()
+    api = ApiClient(settings.api_host, settings.api_port)
+    try:
+        store = bootstrap_store(api)
+    except ApiError as exc:
+        QMessageBox.critical(None, strings.ERROR_TITLE, exc.message)
+        return 1
+
+    # Theme accent comes from the store settings (Réglages). Startup-only
+    # blocking call, pre-UI; a failure just keeps the default accent.
+    try:
+        store_settings = api.get_settings(store["id"])
+        qt_app.setStyleSheet(render_qss(store_settings.get("theme_accent")))
+    except ApiError:
+        pass
+
+    smoke_test = bool(os.environ.get("POS_SMOKE_TEST"))
+    if not smoke_test:  # automated checks skip the interactive PIN gate
+        login = LoginDialog(api)
+        if not login.exec():
+            return 0
+    logger.info(
+        "UI started | store_id={} rtl={}",
+        store["id"],
+        bool(os.environ.get("POS_FORCE_RTL")),
+    )
+
+    window = MainWindow(api, store)
     window.show()
 
-    # Automated checks set POS_SMOKE_TEST to open and close the app unattended.
-    if os.environ.get("POS_SMOKE_TEST"):
-        QTimer.singleShot(3000, qt_app.quit)
+    if smoke_test:
+        QTimer.singleShot(4000, qt_app.quit)
 
     return qt_app.exec()
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except Exception:
+        _crash_log("runtime")
+        raise

@@ -1,7 +1,25 @@
 from fastapi import APIRouter
 
+from app.api.routes import (
+    alerts,
+    auth,
+    categories,
+    customers,
+    products,
+    sales,
+    settings,
+    statistics,
+    stores,
+)
+
 api_router = APIRouter()
 
-# Feature routers get registered here as they are built, e.g.:
-# from app.api.routes import products
-# api_router.include_router(products.router, prefix="/products", tags=["products"])
+api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
+api_router.include_router(stores.router, prefix="/stores", tags=["stores"])
+api_router.include_router(categories.router, prefix="/categories", tags=["categories"])
+api_router.include_router(products.router, prefix="/products", tags=["products"])
+api_router.include_router(customers.router, prefix="/customers", tags=["customers"])
+api_router.include_router(sales.router, prefix="/sales", tags=["sales"])
+api_router.include_router(statistics.router, prefix="/statistics", tags=["statistics"])
+api_router.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
+api_router.include_router(settings.router, prefix="/settings", tags=["settings"])

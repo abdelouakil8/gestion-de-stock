@@ -1,6 +1,6 @@
 """CRUD for stores. No business logic — Phase 2 owns the rules."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -27,16 +27,14 @@ def get_store(db: Session, store_id: UUID) -> Store | None:
 
 def list_stores(db: Session) -> list[Store]:
     return list(
-        db.scalars(
-            select(Store).where(Store.deleted_at.is_(None)).order_by(Store.name)
-        )
+        db.scalars(select(Store).where(Store.deleted_at.is_(None)).order_by(Store.name))
     )
 
 
 def soft_delete_store(db: Session, store_id: UUID) -> Store | None:
     store = get_store(db, store_id)
     if store is not None:
-        store.deleted_at = datetime.now(timezone.utc)
+        store.deleted_at = datetime.now(UTC)
         db.commit()
         db.refresh(store)
     return store
