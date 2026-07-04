@@ -5,16 +5,16 @@ and statistics/profit on base units (backward compatible with unit_count=1).
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.exceptions import InsufficientStockError
-from app.models import Base, Product, SaleItem
+from app.models import Base, Product
+from app.schemas.customer import CustomerCreate
 from app.schemas.product import PackagingCreate, ProductCreate
 from app.schemas.sale import CartItem, CheckoutRequest, PaymentInfo
 from app.schemas.store import StoreCreate
 from app.services import customers, products, sales, statistics, stores
-from app.schemas.customer import CustomerCreate
 
 
 def _carton(unit_count=24, detail="2100.00", gros="2050.00", super_gros="2000.00"):
@@ -139,9 +139,7 @@ def test_stats_base_units_with_cartons(db):
         db,
         CheckoutRequest(
             store_id=store.id,
-            items=[
-                CartItem(product_id=product.id, quantity=2, packaging_id=carton.id)
-            ],
+            items=[CartItem(product_id=product.id, quantity=2, packaging_id=carton.id)],
         ),
     )
     stats = statistics.product_stats(db, store.id, product.id)
@@ -176,7 +174,11 @@ def test_customer_profit_uses_base_units(db):
 
 def test_money_exact_no_float_drift_with_cartons(db):
     store, product = _make(
-        db, stock=500, packagings=[_carton(unit_count=7, detail="12.33", gros="12.00", super_gros="11.00")]
+        db,
+        stock=500,
+        packagings=[
+            _carton(unit_count=7, detail="12.33", gros="12.00", super_gros="11.00")
+        ],
     )
     carton = product.packagings[0]
     sale = sales.finalize_sale(

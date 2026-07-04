@@ -140,7 +140,7 @@ RADIUS = {"sm": 4, "md": 6, "lg": 10, "pill": 999}
 
 ICON_SIZES = {"sm": 14, "md": 18, "lg": 22}
 
-THUMB_SIZES = {"list": 28, "cart": 34, "table": 30, "preview": 96, "detail": 128}
+THUMB_SIZES = {"list": 44, "cart": 34, "table": 30, "preview": 96, "detail": 128}
 
 # Preset accent swatches offered in Réglages (any hex is accepted too).
 ACCENT_PRESETS = [

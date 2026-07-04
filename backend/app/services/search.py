@@ -28,7 +28,7 @@ re-classement Python, qui reste la source de vérité du tri final.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -43,7 +43,7 @@ _CANDIDATE_FLOOR = 50
 # (le score flou WRatio est dans [0, 100] ; 100 domine donc naturellement).
 _EXACT_SCORE = 100.0
 # Sentinelle de récence pour un client sans vente : plus ancien que tout.
-_MIN_DT = datetime.min.replace(tzinfo=timezone.utc)
+_MIN_DT = datetime.min.replace(tzinfo=UTC)
 
 
 @dataclass
@@ -96,9 +96,7 @@ def _rank_key(cand: _Candidate, norm: str, last_dt: datetime | None):
     return (tier, -cand.fuzzy_score, recency, cand.name)
 
 
-def _customer_recency(
-    db: Session, candidate_ids: list[UUID]
-) -> dict[UUID, datetime]:
+def _customer_recency(db: Session, candidate_ids: list[UUID]) -> dict[UUID, datetime]:
     """Dernière date de vente par client (départage la récence, clients seuls).
 
     Une seule requête agrégée sur les ventes non supprimées ; les clients sans

@@ -9,7 +9,7 @@ one shared in-memory database so an assignment made through the API is
 visible to the analytics queries and vice-versa.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest

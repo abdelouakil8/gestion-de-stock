@@ -24,6 +24,7 @@ All network goes through run_api; nothing here blocks the UI thread.
 
 from collections.abc import Callable
 
+import shiboken6
 from PySide6.QtCore import QEvent, QPoint, Qt, QTimer
 from PySide6.QtWidgets import (
     QFrame,
@@ -135,6 +136,11 @@ class CustomerSearchBox(QWidget):
         )
 
     def _on_results(self, query: str, customers: object) -> None:
+        # The widget (and its popup/list) may have been destroyed while the
+        # search was in flight — e.g. the payment dialog was closed. Touching
+        # the deleted C++ objects would hard-crash the process.
+        if not shiboken6.isValid(self):
+            return
         # A newer keystroke may have superseded this in-flight search.
         if query != self._query:
             return
@@ -157,6 +163,8 @@ class CustomerSearchBox(QWidget):
         # A transient search failure just clears the popup; the host keeps
         # working and the operator can retry by typing. Errors that need a
         # decision surface elsewhere (attach/create dialogs).
+        if not shiboken6.isValid(self):
+            return
         self._hide_popup()
 
     # ------------------------------------------------------------ selection

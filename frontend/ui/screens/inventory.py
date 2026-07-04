@@ -11,7 +11,8 @@ from decimal import Decimal
 from pathlib import Path
 
 import qtawesome as qta
-from PySide6.QtCore import Qt
+import shiboken6
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -24,6 +25,8 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QSpinBox,
     QStackedWidget,
@@ -52,6 +55,108 @@ _CONTENT_TYPES = {
 }
 
 
+# Shared column widths so the packaging header row and each editable row
+# line up (a plain QHBoxLayout of fixed-width fields aligns predictably).
+_PK_W_LABEL = 150
+_PK_W_UNITS = 90
+_PK_W_PRICE = 95
+_PK_W_REMOVE = 30
+
+
+class _PackagingRow(QWidget):
+    """One editable packaging (carton) inside the product form: label,
+    units-per-package, and its own three named prices."""
+
+    def __init__(self, on_remove, on_change, data: dict | None = None) -> None:
+        super().__init__()
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SPACING["xs"])
+
+        self.label_input = QLineEdit()
+        self.label_input.setPlaceholderText(strings.PACKAGING_LABEL)
+        self.label_input.setFixedWidth(_PK_W_LABEL)
+        self.unit_count = QSpinBox()
+        self.unit_count.setRange(1, 1_000_000)
+        self.unit_count.setValue(1)
+        self.unit_count.setPrefix("×")
+        self.unit_count.setFixedWidth(_PK_W_UNITS)
+        self.unit_count.setToolTip(strings.PACKAGING_UNIT_COUNT)
+        self.detail = self._money(strings.PRICE_DETAIL)
+        self.gros = self._money(strings.PRICE_GROS)
+        self.super_gros = self._money(strings.PRICE_SUPER_GROS)
+
+        layout.addWidget(self.label_input)
+        layout.addWidget(self.unit_count)
+        layout.addWidget(self.detail)
+        layout.addWidget(self.gros)
+        layout.addWidget(self.super_gros)
+        remove = QPushButton(qta.icon("fa5s.times", color=NEUTRAL["500"]), "")
+        remove.setObjectName("Ghost")
+        remove.setFixedWidth(_PK_W_REMOVE)
+        remove.setToolTip(strings.PACKAGING_REMOVE)
+        remove.clicked.connect(lambda: on_remove(self))
+        layout.addWidget(remove)
+        layout.addStretch(1)
+
+        for widget in (self.detail, self.gros, self.super_gros, self.unit_count):
+            widget.valueChanged.connect(lambda _=None: on_change())
+
+        if data:
+            self.label_input.setText(data.get("label", ""))
+            self.unit_count.setValue(int(data.get("unit_count", 1)))
+            self.detail.setValue(float(data.get("price_detail", 0)))
+            self.gros.setValue(float(data.get("price_gros", 0)))
+            self.super_gros.setValue(float(data.get("price_super_gros", 0)))
+
+    @staticmethod
+    def _money(placeholder: str) -> QDoubleSpinBox:
+        spin = QDoubleSpinBox()
+        spin.setDecimals(2)
+        spin.setMaximum(9_999_999.99)
+        spin.setFixedWidth(_PK_W_PRICE)
+        spin.setToolTip(placeholder)
+        return spin
+
+    @staticmethod
+    def build_header() -> QWidget:
+        """A column-header row aligned with the editable fields above."""
+        header = QWidget()
+        row = QHBoxLayout(header)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(SPACING["xs"])
+
+        def cap(text: str, width: int) -> QLabel:
+            label = QLabel(text)
+            label.setObjectName("Caption")
+            label.setFixedWidth(width)
+            return label
+
+        row.addWidget(cap(strings.PACKAGING_LABEL_COL, _PK_W_LABEL))
+        row.addWidget(cap(strings.PACKAGING_UNITS_COL, _PK_W_UNITS))
+        row.addWidget(cap(strings.PRICE_DETAIL, _PK_W_PRICE))
+        row.addWidget(cap(strings.PRICE_GROS, _PK_W_PRICE))
+        row.addWidget(cap(strings.PRICE_SUPER_GROS, _PK_W_PRICE))
+        row.addStretch(1)
+        return header
+
+    def is_blank(self) -> bool:
+        return not self.label_input.text().strip()
+
+    def order_ok(self) -> bool:
+        return self.detail.value() >= self.gros.value() >= self.super_gros.value()
+
+    def payload(self, position: int) -> dict:
+        return {
+            "label": self.label_input.text().strip(),
+            "unit_count": self.unit_count.value(),
+            "price_detail": f"{self.detail.value():.2f}",
+            "price_gros": f"{self.gros.value():.2f}",
+            "price_super_gros": f"{self.super_gros.value():.2f}",
+            "position": position,
+        }
+
+
 class ProductDialog(ModalDialog):
     """Create/edit product form. `details` present ⇒ edit mode (owner data).
 
@@ -67,6 +172,9 @@ class ProductDialog(ModalDialog):
         self.result_product: dict | None = None
         self._staged_image: Path | None = None
         self._staged_removal = False
+        # Wider than the base dialog so the packaging columns (name + units +
+        # 3 prices) fit on one line without overflowing.
+        self.setMinimumWidth(680)
 
         form = QFormLayout()
         form.setSpacing(SPACING["md"])
@@ -137,6 +245,29 @@ class ProductDialog(ModalDialog):
 
         self.content.addLayout(form)
 
+        # --------------------------------------------- packagings (cartons)
+        packaging_title = QLabel(strings.PRODUCT_PACKAGINGS)
+        packaging_title.setObjectName("SectionTitle")
+        self.content.addWidget(packaging_title)
+        packaging_hint = QLabel(strings.PACKAGING_HINT)
+        packaging_hint.setObjectName("FieldHint")
+        packaging_hint.setWordWrap(True)
+        self.content.addWidget(packaging_hint)
+        # Column header (hidden until at least one packaging row exists).
+        self._packaging_header = _PackagingRow.build_header()
+        self._packaging_header.hide()
+        self.content.addWidget(self._packaging_header)
+        self._packaging_rows: list[_PackagingRow] = []
+        self._packaging_box = QVBoxLayout()
+        self._packaging_box.setSpacing(SPACING["xs"])
+        self.content.addLayout(self._packaging_box)
+        add_packaging = QPushButton(
+            qta.icon("fa5s.plus", color=NEUTRAL["600"]), strings.PACKAGING_ADD
+        )
+        add_packaging.setObjectName("Ghost")
+        add_packaging.clicked.connect(lambda: self._add_packaging_row())
+        self.content.addWidget(add_packaging)
+
         if details:
             self.name_input.setText(details["name"])
             self.barcode_input.setText(details.get("barcode") or "")
@@ -152,10 +283,43 @@ class ProductDialog(ModalDialog):
             self.active_check.setChecked(details["is_active"])
             self.image_preview.set_product(details)
             self.remove_image_button.setVisible(bool(details.get("image_path")))
+            for packaging in details.get("packagings") or []:
+                self._add_packaging_row(packaging)
         else:
             self.image_preview.set_letter("")
             self.remove_image_button.hide()
         self._check_price_order()
+
+    # ---------------------------------------------------------- packagings
+
+    def _add_packaging_row(self, data: dict | None = None) -> None:
+        row = _PackagingRow(self._remove_packaging_row, self._check_price_order, data)
+        self._packaging_rows.append(row)
+        self._packaging_box.addWidget(row)
+        self._packaging_header.setVisible(bool(self._packaging_rows))
+        self.fit_to_content()
+
+    def _remove_packaging_row(self, row: "_PackagingRow") -> None:
+        if row in self._packaging_rows:
+            self._packaging_rows.remove(row)
+        self._packaging_box.removeWidget(row)
+        row.deleteLater()
+        self._packaging_header.setVisible(bool(self._packaging_rows))
+        self.fit_to_content()
+
+    def _packagings_payload(self) -> list[dict] | None:
+        """Full current packaging list (position = row order); None if a row
+        has an invalid price order (caller shows the error)."""
+        payload = []
+        position = 0
+        for row in self._packaging_rows:
+            if row.is_blank():
+                continue
+            if not row.order_ok():
+                return None
+            payload.append(row.payload(position))
+            position += 1
+        return payload
 
     # ------------------------------------------------------------- image
 
@@ -239,6 +403,10 @@ class ProductDialog(ModalDialog):
         if not self._price_order_ok():
             show_error(self, strings.PRODUCT_PRICE_ORDER_ERROR)
             return
+        packagings = self._packagings_payload()
+        if packagings is None:
+            show_error(self, strings.PRODUCT_PRICE_ORDER_ERROR)
+            return
         payload = {
             "name": name,
             "barcode": self.barcode_input.text().strip() or None,
@@ -250,6 +418,8 @@ class ProductDialog(ModalDialog):
             "stock_quantity": self.stock_input.value(),
             "low_stock_threshold": self.threshold_input.value(),
             "is_active": self.active_check.isChecked(),
+            # Full current packaging set (empty list clears them).
+            "packagings": packagings,
         }
         self.ok_button.setEnabled(False)
         if self.details:
@@ -448,12 +618,8 @@ class InventoryScreen(QWidget):
         self.search = QLineEdit()
         self.search.setObjectName("SearchInput")
         self.search.setPlaceholderText(strings.SEARCH)
-        self.search.textChanged.connect(self._apply_filters)
+        self.search.textChanged.connect(self._on_search_changed)
         toolbar.addWidget(self.search, stretch=1)
-        self.category_filter = QComboBox()
-        self.category_filter.addItem(strings.INVENTORY_ALL_CATEGORIES, None)
-        self.category_filter.currentIndexChanged.connect(self._apply_filters)
-        toolbar.addWidget(self.category_filter)
 
         new_button = QPushButton(
             qta.icon("fa5s.plus", color="white"), strings.INVENTORY_NEW_PRODUCT
@@ -470,6 +636,23 @@ class InventoryScreen(QWidget):
         for button in (new_button, edit_button, archive_button):
             toolbar.addWidget(button)
         layout.addLayout(toolbar)
+
+        # Debounced server-side smart search (accent/Arabic/typo tolerant).
+        self._search_debounce = QTimer(self)
+        self._search_debounce.setSingleShot(True)
+        self._search_debounce.setInterval(250)
+        self._search_debounce.timeout.connect(self._run_search)
+        # None = no active query (show the full catalog for the category).
+        self.search_results: list[dict] | None = None
+
+        # Body: category rail (left) + product table stack (right).
+        body = QHBoxLayout()
+        body.setSpacing(SPACING["md"])
+        self.category_rail = QListWidget()
+        self.category_rail.setObjectName("CategoryRail")
+        self.category_rail.setFixedWidth(200)
+        self.category_rail.currentRowChanged.connect(lambda _: self._render())
+        body.addWidget(self.category_rail)
 
         self.table = DataTable(
             [
@@ -503,7 +686,8 @@ class InventoryScreen(QWidget):
         self.stack = QStackedWidget()
         self.stack.addWidget(self.table)
         self.stack.addWidget(self.empty)
-        layout.addWidget(self.stack, stretch=1)
+        body.addWidget(self.stack, stretch=1)
+        layout.addLayout(body, stretch=1)
 
         self.refresh()
 
@@ -525,25 +709,45 @@ class InventoryScreen(QWidget):
         """Select a product row (navigation from the Alertes screen)."""
         self._pending_focus = product_id
         self.search.clear()
-        self.category_filter.setCurrentIndex(0)
+        self.search_results = None
+        if self.category_rail.count():
+            self.category_rail.setCurrentRow(0)  # "Tous les produits"
         self.refresh()
+
+    def _selected_category(self):
+        """Data of the selected rail entry: None (all), a category id, or the
+        '__uncategorized__' sentinel."""
+        item = self.category_rail.currentItem()
+        return item.data(Qt.ItemDataRole.UserRole) if item is not None else None
 
     def _on_categories(self, categories: object) -> None:
         self.categories = list(categories)
-        current = self.category_filter.currentData()
-        self.category_filter.blockSignals(True)
-        self.category_filter.clear()
-        self.category_filter.addItem(strings.INVENTORY_ALL_CATEGORIES, None)
+        current = self._selected_category()
+        self.category_rail.blockSignals(True)
+        self.category_rail.clear()
+        all_item = QListWidgetItem(strings.INVENTORY_ALL_PRODUCTS)
+        all_item.setData(Qt.ItemDataRole.UserRole, None)
+        self.category_rail.addItem(all_item)
         for category in self.categories:
-            self.category_filter.addItem(category["name"], category["id"])
-        index = self.category_filter.findData(current)
-        self.category_filter.setCurrentIndex(max(index, 0))
-        self.category_filter.blockSignals(False)
-        self._apply_filters()
+            item = QListWidgetItem(category["name"])
+            item.setData(Qt.ItemDataRole.UserRole, category["id"])
+            self.category_rail.addItem(item)
+        uncat = QListWidgetItem(strings.INVENTORY_UNCATEGORIZED)
+        uncat.setData(Qt.ItemDataRole.UserRole, "__uncategorized__")
+        self.category_rail.addItem(uncat)
+        # Restore the previous selection, defaulting to "Tous".
+        target = 0
+        for i in range(self.category_rail.count()):
+            if self.category_rail.item(i).data(Qt.ItemDataRole.UserRole) == current:
+                target = i
+                break
+        self.category_rail.setCurrentRow(target)
+        self.category_rail.blockSignals(False)
+        self._render()
 
     def _on_products(self, products: object) -> None:
         self.products = list(products)
-        self._apply_filters()
+        self._render()
         if self._pending_focus:
             for row, product in enumerate(self.visible_products):
                 if product["id"] == self._pending_focus:
@@ -552,21 +756,49 @@ class InventoryScreen(QWidget):
                     break
             self._pending_focus = None
 
-    def _apply_filters(self) -> None:
-        query = self.search.text().strip().lower()
-        category_id = self.category_filter.currentData()
-        names = {c["id"]: c["name"] for c in self.categories}
+    # ------------------------------------------------------------- search
 
-        self.visible_products = [
-            p
-            for p in self.products
-            if (
-                not query
-                or query in p["name"].lower()
-                or query in (p.get("barcode") or "")
-            )
-            and (category_id is None or p.get("category_id") == category_id)
-        ]
+    def _on_search_changed(self, text: str) -> None:
+        if not text.strip():
+            self._search_debounce.stop()
+            self.search_results = None
+            self._render()
+            return
+        self._search_debounce.start()
+
+    def _run_search(self) -> None:
+        query = self.search.text().strip()
+        if not query:
+            self.search_results = None
+            self._render()
+            return
+        run_api(
+            lambda: self.api.search_products(self.store_id, query=query, limit=100),
+            lambda results, q=query: self._on_search_results(q, results),
+            lambda err: show_error(self, err.message),
+        )
+
+    def _on_search_results(self, query: str, results: object) -> None:
+        if not shiboken6.isValid(self):
+            return  # screen torn down while a search was in flight
+        if query != self.search.text().strip():
+            return  # a newer keystroke superseded this search
+        self.search_results = list(results or [])
+        self._render()
+
+    def _render(self) -> None:
+        category = self._selected_category()
+        names = {c["id"]: c["name"] for c in self.categories}
+        base = self.search_results if self.search_results is not None else self.products
+
+        def in_category(product: dict) -> bool:
+            if category is None:
+                return True
+            if category == "__uncategorized__":
+                return not product.get("category_id")
+            return product.get("category_id") == category
+
+        self.visible_products = [p for p in base if in_category(p)]
         self.table.set_rows(
             [
                 [

@@ -428,16 +428,16 @@ def main() -> int:
     print("[Recherche intelligente]")
     # Accent-insensitive: "cafe" (no accent) must find "Café Torréfié عربي".
     hits = api.search_products(store_id, query="cafe", active_only=True)
-    assert any(p["id"] == coffee["id"] for p in hits), (
-        f"accent-insensitive search failed: {[p['name'] for p in hits]}"
-    )
+    assert any(
+        p["id"] == coffee["id"] for p in hits
+    ), f"accent-insensitive search failed: {[p['name'] for p in hits]}"
     ok("Recherche produit tolérante aux accents (« cafe » → « Café Torréfié »)")
 
     # Fuzzy / typo-tolerant: a small typo must still surface the product.
     typo_hits = api.search_products(store_id, query="caef", limit=5)
-    assert any(p["id"] == coffee["id"] for p in typo_hits), (
-        f"fuzzy search failed: {[p['name'] for p in typo_hits]}"
-    )
+    assert any(
+        p["id"] == coffee["id"] for p in typo_hits
+    ), f"fuzzy search failed: {[p['name'] for p in typo_hits]}"
     ok("Recherche produit tolérante aux fautes de frappe (« caef » → « Café »)")
 
     # The barcode fast path is untouched: exact active product or 404.
@@ -587,6 +587,82 @@ def main() -> int:
     cust_stats = api.stats_customer(customer["id"])
     assert cust_stats["sales_count"] >= 1, cust_stats
     ok("Statistiques client : la vente ré-attachée est comptabilisée (sales_count ≥ 1)")
+
+    # ------------------------------------ Conditionnements + prix manuel
+    print("[Conditionnements & prix manuel]")
+    packaged = api.create_product(
+        {
+            "store_id": store_id,
+            "name": "Lait Carton",
+            "barcode": "6130000009999",
+            "cost_price": "10.00",
+            "price_detail": "100.00",
+            "price_gros": "95.00",
+            "price_super_gros": "90.00",
+            "stock_quantity": 500,
+            "packagings": [
+                {
+                    "label": "Carton",
+                    "unit_count": 24,
+                    "price_detail": "2100.00",
+                    "price_gros": "2050.00",
+                    "price_super_gros": "2000.00",
+                    "position": 0,
+                }
+            ],
+        }
+    )
+    assert len(packaged["packagings"]) == 1, packaged
+    ok("Produit créé avec conditionnement (Carton ×24, prix propre)")
+
+    checkout3 = CheckoutScreen(api, store_id)
+    checkout3._add_to_cart(packaged)
+    pk_line = checkout3.cart[0]
+    checkout3._on_packaging_changed(pk_line, packaged["packagings"][0])
+    assert pk_line.unit_price == Decimal("2100.00")  # package price, not unit*24
+    assert pk_line.total == Decimal("2100.00")
+    assert pk_line.base_units == 24
+    payload = checkout3._line_payload(pk_line)
+    assert payload["packaging_id"] == packaged["packagings"][0]["id"]
+    ok("Caisse : sélection du Carton → prix du colis (2100), payload packaging_id")
+
+    stock_before = api.get_product_by_barcode(store_id, "6130000009999")[
+        "stock_quantity"
+    ]
+    sale_pk = api.checkout(
+        store_id, [checkout3._line_payload(pk_line)], {"mode": "full"}
+    )
+    stock_after = api.get_product_by_barcode(store_id, "6130000009999")[
+        "stock_quantity"
+    ]
+    assert stock_before - stock_after == 24, (stock_before, stock_after)
+    assert sale_pk["total_amount"] == "2100.00"
+    ok("Vente d'un Carton → stock −24 unités de base, total 2100,00")
+
+    # Manual price below the packaging floor is refused by the server.
+    checkout3._on_level_changed(pk_line, "manual")
+    checkout3._on_manual_price_changed(pk_line, 1999.0)  # below 2000 floor
+    manual_payload = checkout3._line_payload(pk_line)
+    assert manual_payload["unit_price_override"] == "1999.00"
+    try:
+        api.checkout(store_id, [manual_payload], {"mode": "full"})
+        raise AssertionError("manual price below floor should be refused")
+    except ApiError as exc:
+        assert exc.code == "price_below_floor", exc.code
+    ok("Prix manuel sous le plancher du conditionnement → refus serveur")
+
+    # ---------------------------------------- Stock : rail catégories
+    print("[Stock — catégories]")
+    inv2 = InventoryScreen(api, store_id)
+    wait_until(app, lambda: inv2.category_rail.count() >= 2, what="category rail")
+    assert inv2._selected_category() is None  # defaults to "Tous les produits"
+    inv2.search.setText("lait")
+    wait_until(
+        app,
+        lambda: any(p["name"] == "Lait Carton" for p in inv2.visible_products),
+        what="stock smart search 'lait'",
+    )
+    ok("Stock : rail catégories + recherche intelligente serveur")
 
     # ------------------------------------------------------ Shell / F11
     print("[Fenêtre]")

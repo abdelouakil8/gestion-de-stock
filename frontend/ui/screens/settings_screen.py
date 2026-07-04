@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from services import printing
 from services.workers import run_api
 from ui import strings
 from ui.styles.tokens import ACCENT_PRESETS, NEUTRAL, SPACING, render_qss
@@ -224,6 +225,29 @@ class SettingsScreen(QWidget):
         language_card.body.addWidget(self.language_combo)
         left.addWidget(language_card)
 
+        # ------------------------------------------------------ printer
+        printer_card = SectionCard(strings.SETTINGS_PRINTER_SECTION, "fa5s.print")
+        printer_hint = QLabel(strings.SETTINGS_PRINTER_HINT)
+        printer_hint.setObjectName("FieldHint")
+        printer_hint.setWordWrap(True)
+        printer_card.body.addWidget(printer_hint)
+        self.printer_combo = QComboBox()
+        self.printer_combo.addItem(strings.SETTINGS_PRINTER_DEFAULT, None)
+        for name in printing.available_printers():
+            self.printer_combo.addItem(name, name)
+        current_printer = printing.get_selected_printer()
+        if current_printer:
+            index = self.printer_combo.findData(current_printer)
+            self.printer_combo.setCurrentIndex(max(index, 0))
+        self.printer_combo.currentIndexChanged.connect(self._on_printer_changed)
+        printer_card.body.addWidget(self.printer_combo)
+        test_print = QPushButton(
+            qta.icon("fa5s.print", color=NEUTRAL["600"]), strings.SETTINGS_PRINTER_TEST
+        )
+        test_print.clicked.connect(self._test_print)
+        printer_card.body.addWidget(test_print, alignment=Qt.AlignmentFlag.AlignLeft)
+        left.addWidget(printer_card)
+
         # ------------------------------------------------------ accent
         accent_card = SectionCard(strings.SETTINGS_ACCENT_SECTION, "fa5s.palette")
         swatch_row = QHBoxLayout()
@@ -331,6 +355,25 @@ class SettingsScreen(QWidget):
                 self._swatch_group.setExclusive(False)
                 checked.setChecked(False)
                 self._swatch_group.setExclusive(True)
+
+    # ------------------------------------------------------------- printer
+
+    def _on_printer_changed(self) -> None:
+        """Persist the printer choice machine-locally (not to the backend)."""
+        printing.set_selected_printer(self.printer_combo.currentData())
+
+    def _test_print(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        printer = self.printer_combo.currentData()
+        path = Path(tempfile.gettempdir()) / "test_impression.pdf"
+        try:
+            printing.write_test_pdf(path, printer)
+            printing.print_pdf(path, printer)
+            show_toast(self, strings.SETTINGS_PRINTER_TEST_SENT)
+        except OSError as exc:
+            show_error(self, strings.RECEIPT_PRINT_FAILED.format(path=exc))
 
     # ---------------------------------------------------------------- save
 

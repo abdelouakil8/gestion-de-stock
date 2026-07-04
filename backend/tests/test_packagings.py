@@ -16,12 +16,11 @@ from app.core.exceptions import (
     NotFoundError,
     PriceBelowFloorError,
 )
-from app.models import Sale, SaleItem
-from app.schemas.category import CategoryCreate
+from app.models import Sale
 from app.schemas.product import PackagingCreate, ProductCreate, ProductUpdate
 from app.schemas.sale import CartItem, CheckoutRequest
 from app.schemas.store import StoreCreate
-from app.services import categories, products, sales, stores
+from app.services import products, sales, stores
 
 
 def _packaging(label, unit_count, detail, gros, super_gros, position=0):
@@ -57,9 +56,7 @@ def build(db, *, stock=1000, packagings=None):
 def _checkout(db, store, lines):
     return sales.finalize_sale(
         db,
-        CheckoutRequest(
-            store_id=store.id, items=[CartItem(**line) for line in lines]
-        ),
+        CheckoutRequest(store_id=store.id, items=[CartItem(**line) for line in lines]),
     )
 
 
@@ -83,11 +80,15 @@ def test_product_returns_packagings_in_list_order(db):
 
 def test_packaging_price_ordering_violation_rejected(db):
     with pytest.raises(InvalidPriceLevelsError):
-        build(db, packagings=[_packaging("Carton", 24, "2000.00", "2050.00", "2000.00")])
+        build(
+            db, packagings=[_packaging("Carton", 24, "2000.00", "2050.00", "2000.00")]
+        )
 
 
 def test_packaging_unit_count_below_one_rejected(db):
-    with pytest.raises(Exception):  # pydantic ge=1 or service/DB CHECK
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):  # unit_count Field(ge=1)
         _packaging("Bad", 0, "10.00", "10.00", "10.00")
 
 
@@ -116,7 +117,9 @@ def test_sell_one_carton_deducts_unit_count_and_charges_package_price(db):
     )
     carton = product.packagings[0]
     sale = _checkout(
-        db, store, [{"product_id": product.id, "quantity": 1, "packaging_id": carton.id}]
+        db,
+        store,
+        [{"product_id": product.id, "quantity": 1, "packaging_id": carton.id}],
     )
     db.refresh(product)
     assert product.stock_quantity == 100 - 24  # base units consumed
@@ -136,7 +139,9 @@ def test_sell_three_cartons(db):
     )
     carton = product.packagings[0]
     sale = _checkout(
-        db, store, [{"product_id": product.id, "quantity": 3, "packaging_id": carton.id}]
+        db,
+        store,
+        [{"product_id": product.id, "quantity": 3, "packaging_id": carton.id}],
     )
     db.refresh(product)
     assert product.stock_quantity == 100 - 72

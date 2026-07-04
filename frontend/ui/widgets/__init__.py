@@ -3,7 +3,7 @@
 from ui.widgets.badge import Badge, DeltaChip
 from ui.widgets.bars import BarChart
 from ui.widgets.card import Card, SectionCard, StatCard
-from ui.widgets.customer_dialogs import CustomerFormDialog, CustomerPickerDialog
+from ui.widgets.customer_dialogs import CustomerFormDialog
 from ui.widgets.data_table import DataTable
 from ui.widgets.modal import ModalDialog, ask_confirm, show_error, show_info
 from ui.widgets.payment_dialogs import CheckoutPaymentDialog, RecordPaymentDialog
@@ -18,7 +18,6 @@ __all__ = [
     "Card",
     "CheckoutPaymentDialog",
     "CustomerFormDialog",
-    "CustomerPickerDialog",
     "DataTable",
     "DeltaChip",
     "EmptyState",

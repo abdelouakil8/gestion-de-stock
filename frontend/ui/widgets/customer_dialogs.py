@@ -1,20 +1,15 @@
-"""Customer dialogs — create/edit form and search-and-pick, shared by the
-Caisse (attach customer / credit payment) and Clients screens."""
+"""Customer create/edit form dialog, shared by the Caisse (attach customer /
+credit payment via CustomerSearchBox) and the Clients screen.
 
-import qtawesome as qta
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
-    QFormLayout,
-    QHBoxLayout,
-    QLineEdit,
-    QListWidget,
-    QListWidgetItem,
-    QPushButton,
-)
+Search-and-attach lives in ui.widgets.customer_search.CustomerSearchBox; the
+old CustomerPickerDialog it replaced has been removed."""
+
+import shiboken6
+from PySide6.QtWidgets import QFormLayout, QLineEdit
 
 from services.workers import run_api
 from ui import strings
-from ui.styles.tokens import NEUTRAL, SPACING
+from ui.styles.tokens import SPACING
 from ui.widgets.modal import ModalDialog, show_error
 
 
@@ -68,75 +63,13 @@ class CustomerFormDialog(ModalDialog):
         run_api(call, self._on_saved, self._on_error)
 
     def _on_saved(self, customer: object) -> None:
+        if not shiboken6.isValid(self):
+            return  # dialog dismissed while the save was in flight
         self.result_customer = customer
         super().accept()
 
     def _on_error(self, err) -> None:
+        if not shiboken6.isValid(self):
+            return
         self.ok_button.setEnabled(True)
         show_error(self, err.message)
-
-
-class CustomerPickerDialog(ModalDialog):
-    """Search customers by name/phone and pick one (or create inline)."""
-
-    def __init__(self, api, store_id: str, parent=None) -> None:
-        super().__init__(strings.CHECKOUT_CUSTOMER_PICK, parent)
-        self.api = api
-        self.store_id = store_id
-        self.selected: dict | None = None
-
-        top = QHBoxLayout()
-        self.search = QLineEdit()
-        self.search.setObjectName("SearchInput")
-        self.search.setPlaceholderText(strings.CUSTOMERS_SEARCH_PLACEHOLDER)
-        self.search.textChanged.connect(self._reload)
-        top.addWidget(self.search, stretch=1)
-        new_button = QPushButton(
-            qta.icon("fa5s.user-plus", color=NEUTRAL["600"]), strings.CUSTOMERS_NEW
-        )
-        new_button.clicked.connect(self._create_new)
-        top.addWidget(new_button)
-        self.content.addLayout(top)
-
-        self.list = QListWidget()
-        self.list.setMinimumHeight(240)
-        self.list.itemActivated.connect(self._choose)
-        self.list.itemDoubleClicked.connect(self._choose)
-        self.content.addWidget(self.list)
-
-        self.ok_button.setText(strings.OK)
-        self.search.setFocus()
-        self._reload()
-
-    def _reload(self) -> None:
-        query = self.search.text().strip() or None
-        run_api(
-            lambda: self.api.list_customers(self.store_id, query),
-            self._on_customers,
-            lambda err: show_error(self, err.message),
-        )
-
-    def _on_customers(self, customers: object) -> None:
-        self.list.clear()
-        for customer in customers:
-            item = QListWidgetItem(f"{customer['name']}   ·   {customer['phone']}")
-            item.setData(Qt.ItemDataRole.UserRole, customer)
-            self.list.addItem(item)
-        if self.list.count():
-            self.list.setCurrentRow(0)
-
-    def _create_new(self) -> None:
-        dialog = CustomerFormDialog(self.api, self.store_id, parent=self)
-        if dialog.exec() and dialog.result_customer:
-            self.selected = dialog.result_customer
-            super().accept()
-
-    def _choose(self, item: QListWidgetItem) -> None:
-        self.selected = item.data(Qt.ItemDataRole.UserRole)
-        super().accept()
-
-    def accept(self) -> None:
-        current = self.list.currentItem()
-        if current is not None:
-            self.selected = current.data(Qt.ItemDataRole.UserRole)
-            super().accept()

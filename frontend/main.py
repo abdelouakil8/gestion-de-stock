@@ -84,10 +84,45 @@ def bootstrap_store(api: ApiClient) -> dict:
     return api.create_store(DEFAULT_STORE_NAME)
 
 
+def _install_qt_exception_guard() -> None:
+    """Keep the app alive when a Qt slot raises.
+
+    PySide6 routes an unhandled exception from a signal/slot through
+    sys.excepthook and, by default, aborts the process — the app just
+    "closes suddenly" with no trace. Replace the hook so the traceback is
+    logged (and shown once) but the event loop keeps running, the way a
+    robust desktop app behaves. Real hard crashes (C++ use-after-free) are
+    prevented at the source with shiboken validity guards in async callbacks.
+    """
+    import traceback as _tb
+
+    def _hook(exc_type, exc, tb) -> None:
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc, tb)
+            return
+        message = "".join(_tb.format_exception(exc_type, exc, tb))
+        try:
+            logger.error("Unhandled UI exception:\n{}", message)
+        except Exception:
+            pass
+        try:
+            from PySide6.QtWidgets import QApplication as _QApp
+
+            if _QApp.instance() is not None:
+                QMessageBox.critical(
+                    None, strings.ERROR_TITLE, strings.UNEXPECTED_ERROR
+                )
+        except Exception:
+            pass
+
+    sys.excepthook = _hook
+
+
 def main() -> int:
     server = start_api_server()
 
     qt_app = QApplication(sys.argv)
+    _install_qt_exception_guard()
     qt_app.setApplicationName(strings.APP_TITLE)
     qt_app.setStyleSheet(render_qss())
     qt_app.aboutToQuit.connect(lambda: setattr(server, "should_exit", True))

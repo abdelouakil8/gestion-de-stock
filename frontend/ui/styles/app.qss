@@ -235,15 +235,24 @@ QCheckBox::indicator:checked {
 QCheckBox::indicator:checked:hover { background: $primary_hover; }
 QCheckBox::indicator:disabled { background: $surface_sunken; border-color: $border_light; }
 QRadioButton::indicator {
+    width: 18px;
+    height: 18px;
     border: 1px solid $border_strong;
     border-radius: 9px;
     background: $surface;
 }
 QRadioButton::indicator:hover { border-color: $primary; }
 QRadioButton::indicator:checked {
-    border: 5px solid $primary;
-    background: white;
+    /* A thick border inflated the box so a 9px radius only rounded the
+       corners (it looked like a square). Use a filled circle instead:
+       1px border + primary fill + border-radius keeps it perfectly round
+       and unmistakably a selected radio (never a checkbox). */
+    border: 1px solid $primary;
+    border-radius: 9px;
+    background: $primary;
+    image: url($assets/radio-dot.svg);
 }
+QRadioButton::indicator:checked:hover { background: $primary_hover; border-color: $primary_hover; }
 QRadioButton::indicator:disabled { background: $surface_sunken; border-color: $border_light; }
 
 /* ================================ Buttons =============================== */

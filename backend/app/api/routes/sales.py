@@ -29,12 +29,12 @@ def checkout(payload: CheckoutRequest, db: DbDep):
 def list_sales(
     db: DbDep,
     store_id: UUID,
-    customer_id: UUID | None = Query(None),
-    guest: str | None = Query(None, pattern="^(pending|confirmed|any)$"),
-    date_from: datetime | None = Query(None),
-    date_to: datetime | None = Query(None),
-    limit: int | None = Query(None, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    customer_id: UUID | None = None,
+    guest: str | None = Query(default=None, pattern="^(pending|confirmed|any)$"),
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    limit: int | None = Query(default=None, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
 ) -> list:
     return sales.list_sales(
         db,

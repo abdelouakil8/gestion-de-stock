@@ -22,7 +22,6 @@ from pathlib import Path
 
 import qtawesome as qta
 from loguru import logger
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,

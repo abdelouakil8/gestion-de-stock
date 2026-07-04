@@ -59,7 +59,8 @@ def build_receipt_pdf(
     packaging_extra = sum(
         1
         for item in items
-        if getattr(item, "packaging_label", None) and (getattr(item, "unit_count", 1) or 1) > 1
+        if getattr(item, "packaging_label", None)
+        and (getattr(item, "unit_count", 1) or 1) > 1
     )
     # 10 fixed header/footer lines + optional header/credit lines
     # + up to 2 lines per item (+1 for each packaged item).
