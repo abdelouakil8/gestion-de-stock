@@ -181,9 +181,13 @@ def upgrade() -> None:
         )
 
     # Backfill named prices from min_sale_price + legacy tiers (in cents).
+    # NB: id columns are declared as raw String here ON PURPOSE — the Uuid
+    # type would rewrite values (lowercase hex) on the round-trip, and a
+    # WHERE on a rewritten key silently matches nothing. Backfills must
+    # treat keys as opaque.
     products_t = sa.table(
         "products",
-        sa.column("id", sa.Uuid()),
+        sa.column("id", sa.String()),
         sa.column("min_sale_price", sa.BigInteger()),
         sa.column("price_detail", sa.BigInteger()),
         sa.column("price_gros", sa.BigInteger()),
@@ -191,7 +195,7 @@ def upgrade() -> None:
     )
     tiers_t = sa.table(
         "price_tiers",
-        sa.column("product_id", sa.Uuid()),
+        sa.column("product_id", sa.String()),
         sa.column("min_quantity", sa.Integer()),
         sa.column("unit_price", sa.BigInteger()),
         sa.column("deleted_at", sa.DateTime(timezone=True)),
@@ -261,12 +265,13 @@ def upgrade() -> None:
             ["id"],
         )
 
+    # Raw String ids again: copied values must pass through untouched.
     sales_t = sa.table(
         "sales",
-        sa.column("id", sa.Uuid()),
+        sa.column("id", sa.String()),
         sa.column("total_amount", sa.BigInteger()),
         sa.column("paid_amount", sa.BigInteger()),
-        sa.column("store_id", sa.Uuid()),
+        sa.column("store_id", sa.String()),
         sa.column("created_at", sa.DateTime(timezone=True)),
     )
     # Every pre-phase-6 sale was paid in full at checkout.
@@ -275,10 +280,10 @@ def upgrade() -> None:
     # ---------------------- 5b. payments backfill for historical sales
     payments_t = sa.table(
         "payments",
-        sa.column("id", sa.Uuid()),
-        sa.column("sale_id", sa.Uuid()),
+        sa.column("id", sa.String()),
+        sa.column("sale_id", sa.String()),
         sa.column("amount", sa.BigInteger()),
-        sa.column("store_id", sa.Uuid()),
+        sa.column("store_id", sa.String()),
         sa.column("created_at", sa.DateTime(timezone=True)),
         sa.column("updated_at", sa.DateTime(timezone=True)),
     )
@@ -295,7 +300,8 @@ def upgrade() -> None:
             sa.insert(payments_t),
             [
                 {
-                    "id": uuid.uuid4(),
+                    # hex-32 lowercase — the exact storage format sa.Uuid uses
+                    "id": uuid.uuid4().hex,
                     "sale_id": sale_id,
                     "amount": total,
                     "store_id": store_id,

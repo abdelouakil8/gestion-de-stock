@@ -12,6 +12,7 @@ worker threads, never on the UI thread.
 
 import qtawesome as qta
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -33,15 +34,21 @@ from ui.screens.customers import CustomersScreen
 from ui.screens.inventory import InventoryScreen
 from ui.screens.settings_screen import SettingsScreen
 from ui.screens.statistics import StatisticsScreen
+from ui.screens.ventes import VentesScreen
 from ui.styles.tokens import ICON_SIZES, NEUTRAL, SPACING
 
 
 class TitleBar(QWidget):
-    """Draggable custom title bar with working min/max/close."""
+    """Draggable custom title bar — always-visible icon buttons for
+    minimize / fullscreen / maximize / close (no hover needed to see
+    them), plus F11-driven fullscreen handled by the window."""
 
     def __init__(self, window: QMainWindow) -> None:
         super().__init__(window)
         self.setObjectName("TitleBar")
+        # Custom QWidget subclasses ignore QSS backgrounds without this —
+        # the bar would paint WHITE and drown the light icons.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._window = window
 
         layout = QHBoxLayout(self)
@@ -59,22 +66,67 @@ class TitleBar(QWidget):
         layout.addWidget(QLabel(strings.APP_TITLE))
         layout.addStretch(1)
 
-        minimize = QPushButton("–")
-        minimize.clicked.connect(window.showMinimized)
-        self.maximize = QPushButton("□")
-        self.maximize.clicked.connect(self._toggle_maximize)
-        close = QPushButton("✕")
-        close.setObjectName("TitleBarClose")
-        close.clicked.connect(window.close)
-        for button in (minimize, self.maximize, close):
+        def window_button(icon_name: str, tooltip: str) -> QPushButton:
+            button = QPushButton()
+            # Pure white in every icon mode — clearly visible at all times.
+            button.setIcon(qta.icon(icon_name, color="white", color_active="white"))
+            button.setToolTip(tooltip)
             button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             layout.addWidget(button)
+            return button
+
+        minimize = window_button("fa5s.window-minimize", strings.TITLEBAR_MINIMIZE)
+        minimize.clicked.connect(window.showMinimized)
+        self.fullscreen = window_button("fa5s.expand", strings.TITLEBAR_FULLSCREEN)
+        self.fullscreen.clicked.connect(self.toggle_fullscreen)
+        self.maximize = window_button("fa5s.window-maximize", strings.TITLEBAR_MAXIMIZE)
+        self.maximize.clicked.connect(self._toggle_maximize)
+        close = window_button("fa5s.times", strings.TITLEBAR_CLOSE)
+        close.setObjectName("TitleBarClose")
+        close.clicked.connect(window.close)
+
+    def _refresh_state_icons(self) -> None:
+        maximized = self._window.isMaximized()
+        fullscreen = self._window.isFullScreen()
+        self.maximize.setIcon(
+            qta.icon(
+                "fa5s.window-restore" if maximized else "fa5s.window-maximize",
+                color="white",
+                color_active="white",
+            )
+        )
+        self.maximize.setToolTip(
+            strings.TITLEBAR_RESTORE if maximized else strings.TITLEBAR_MAXIMIZE
+        )
+        self.fullscreen.setIcon(
+            qta.icon(
+                "fa5s.compress" if fullscreen else "fa5s.expand",
+                color="white",
+                color_active="white",
+            )
+        )
+        self.fullscreen.setToolTip(
+            strings.TITLEBAR_EXIT_FULLSCREEN
+            if fullscreen
+            else strings.TITLEBAR_FULLSCREEN
+        )
 
     def _toggle_maximize(self) -> None:
-        if self._window.isMaximized():
+        if self._window.isFullScreen():
+            self._window.showNormal()
+        elif self._window.isMaximized():
             self._window.showNormal()
         else:
             self._window.showMaximized()
+        self._refresh_state_icons()
+
+    def toggle_fullscreen(self) -> None:
+        """Fill the entire screen (F11 or the expand button)."""
+        if self._window.isFullScreen():
+            self._window.showNormal()
+        else:
+            self._window.showFullScreen()
+        self._refresh_state_icons()
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -155,14 +207,19 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle(strings.APP_TITLE)
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
-        self.resize(1180, 720)
-        self.setMinimumSize(960, 580)
+        self._fit_to_screen()
 
         root = QWidget()
         root_layout = QVBoxLayout(root)
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
-        root_layout.addWidget(TitleBar(self))
+        self.title_bar = TitleBar(self)
+        root_layout.addWidget(self.title_bar)
+        QShortcut(
+            QKeySequence(Qt.Key.Key_F11),
+            self,
+            activated=self.title_bar.toggle_fullscreen,
+        )
 
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
@@ -185,6 +242,9 @@ class MainWindow(QMainWindow):
         self.checkout = CheckoutScreen(api, store["id"])
         self.inventory = InventoryScreen(api, store["id"])
         self.customers = CustomersScreen(api, store["id"])
+        self.ventes = VentesScreen(
+            api, store["id"], on_view_product=self._open_product_from_alert
+        )
         self.statistics = StatisticsScreen(api, store["id"])
         self.alerts = AlertsScreen(api, store["id"], self._open_product_from_alert)
         self.settings_screen = SettingsScreen(api, store)
@@ -194,6 +254,7 @@ class MainWindow(QMainWindow):
             ("fa5s.cash-register", strings.NAV_CHECKOUT, self.checkout),
             ("fa5s.boxes", strings.NAV_INVENTORY, self.inventory),
             ("fa5s.users", strings.NAV_CUSTOMERS, self.customers),
+            ("fa5s.receipt", strings.NAV_SALES, self.ventes),
             ("fa5s.chart-line", strings.NAV_STATISTICS, self.statistics),
             ("fa5s.bell", strings.NAV_ALERTS, self.alerts),
             ("fa5s.cog", strings.NAV_SETTINGS, self.settings_screen),
@@ -204,7 +265,7 @@ class MainWindow(QMainWindow):
             nav.addWidget(button)
             self._nav_buttons.append(button)
         nav.addStretch(1)
-        self.alerts_nav = self._nav_buttons[4]
+        self.alerts_nav = self._nav_buttons[5]
 
         body.addWidget(sidebar)
         body.addWidget(self.stack, stretch=1)
@@ -225,6 +286,27 @@ class MainWindow(QMainWindow):
         self._alerts_timer.timeout.connect(self.refresh_alerts_badge)
         self._alerts_timer.start()
         self.refresh_alerts_badge()
+
+    def _fit_to_screen(self) -> None:
+        """Size and center the window for ANY display: preferred 1180×720,
+        clamped to the actual available screen (taskbar excluded) so the
+        app never opens larger than the monitor."""
+        from PySide6.QtWidgets import QApplication
+
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            self.resize(1180, 720)
+            return
+        available = screen.availableGeometry()
+        width = min(1180, available.width() - 16)
+        height = min(720, available.height() - 16)
+        self.setMinimumSize(
+            min(920, available.width() - 16), min(560, available.height() - 16)
+        )
+        self.resize(width, height)
+        frame = self.frameGeometry()
+        frame.moveCenter(available.center())
+        self.move(frame.topLeft())
 
     # ---------------------------------------------------------- navigation
 

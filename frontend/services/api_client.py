@@ -38,11 +38,20 @@ class ApiClient:
             return {"X-Owner-Pin": self.pin}
         return {}
 
-    def _request(self, method: str, path: str, *, owner: bool = False, **kwargs) -> Any:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        owner: bool = False,
+        extra_headers: dict[str, str] | None = None,
+        **kwargs,
+    ) -> Any:
+        headers = self._headers(owner)
+        if extra_headers:
+            headers.update(extra_headers)
         try:
-            response = self._client.request(
-                method, path, headers=self._headers(owner), **kwargs
-            )
+            response = self._client.request(method, path, headers=headers, **kwargs)
         except httpx.HTTPError as exc:
             raise ApiError("network_error", strings.NETWORK_ERROR) from exc
 
@@ -96,6 +105,25 @@ class ApiClient:
     def list_products(self, store_id: str) -> list[dict]:
         return self._request("GET", "/products", params={"store_id": store_id})
 
+    def search_products(
+        self,
+        store_id: str,
+        query: str | None = None,
+        limit: int | None = None,
+        active_only: bool = False,
+    ) -> list[dict]:
+        """Smart product search. Without query/limit/active_only this returns
+        the full ordered catalog (same as list_products); with `query` it
+        returns ranked results (exact > prefix > substring > fuzzy)."""
+        params: dict = {"store_id": store_id}
+        if query:
+            params["q"] = query
+        if limit is not None:
+            params["limit"] = limit
+        if active_only:
+            params["active_only"] = True
+        return self._request("GET", "/products", params=params)
+
     def get_product_by_barcode(self, store_id: str, barcode: str) -> dict:
         return self._request(
             "GET", f"/products/by-barcode/{barcode}", params={"store_id": store_id}
@@ -137,10 +165,16 @@ class ApiClient:
 
     # -------------------------------------------------------------- customers
 
-    def list_customers(self, store_id: str, query: str | None = None) -> list[dict]:
+    def list_customers(
+        self, store_id: str, query: str | None = None, limit: int | None = None
+    ) -> list[dict]:
+        """Smart customer search (name OR phone, accent/typo tolerant). No
+        `query` returns all customers ordered by name; `limit` caps results."""
         params: dict = {"store_id": store_id}
         if query:
             params["q"] = query
+        if limit is not None:
+            params["limit"] = limit
         return self._request("GET", "/customers", params=params)
 
     def get_customer(self, customer_id: str) -> dict:
@@ -167,8 +201,47 @@ class ApiClient:
             body["payment"] = payment
         return self._request("POST", "/sales/checkout", json=body)
 
-    def list_sales(self, store_id: str) -> list[dict]:
-        return self._request("GET", "/sales", params={"store_id": store_id})
+    def list_sales(
+        self,
+        store_id: str,
+        *,
+        customer_id: str | None = None,
+        guest: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict]:
+        """Store sales, newest first. Optional filters: customer_id, guest
+        ('pending'|'confirmed'|'any'), date_from/date_to (ISO datetimes,
+        half-open [from, to)), limit (no cap when omitted), offset."""
+        params: dict = {"store_id": store_id}
+        if customer_id is not None:
+            params["customer_id"] = customer_id
+        if guest is not None:
+            params["guest"] = guest
+        if date_from is not None:
+            params["date_from"] = date_from
+        if date_to is not None:
+            params["date_to"] = date_to
+        if limit is not None:
+            params["limit"] = limit
+        if offset:
+            params["offset"] = offset
+        return self._request("GET", "/sales", params=params)
+
+    def get_sale(self, sale_id: str) -> dict:
+        return self._request("GET", f"/sales/{sale_id}")
+
+    def assign_sale_customer(self, sale_id: str, customer_id: str) -> dict:
+        """Attach a customer to an existing (guest) sale."""
+        return self._request(
+            "POST", f"/sales/{sale_id}/customer", json={"customer_id": customer_id}
+        )
+
+    def confirm_guest_sale(self, sale_id: str) -> dict:
+        """Confirm a sale stays anonymous. Idempotent server-side."""
+        return self._request("POST", f"/sales/{sale_id}/confirm-guest")
 
     def record_payment(self, sale_id: str, amount: str) -> dict:
         """Later payment on a credit sale; server rejects overpayment."""
@@ -269,6 +342,15 @@ class ApiClient:
     def update_settings(self, store_id: str, payload: dict) -> dict:
         return self._request(
             "PUT", "/settings", owner=True, params={"store_id": store_id}, json=payload
+        )
+
+    # ----------------------------------------------------------------- admin
+
+    def factory_reset(self, pin: str) -> dict:
+        """Full wipe. The freshly TYPED pin is sent — never the cached one,
+        so the confirmation dialog cannot be bypassed."""
+        return self._request(
+            "POST", "/admin/factory-reset", extra_headers={"X-Owner-Pin": pin}
         )
 
 

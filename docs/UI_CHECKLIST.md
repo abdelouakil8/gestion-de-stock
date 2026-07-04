@@ -10,6 +10,7 @@ les seules exceptions sont des affectations d'attribut (`api.pin = …`) et les
 appels de démarrage dans `main.py`, exécutés avant la création de la fenêtre.
 
 ## Démarrage
+- [✅] Base de données MIGRÉE AUTOMATIQUEMENT au démarrage (`alembic upgrade head` programmatique) — une base d'une phase précédente est mise à niveau sur place, en dev comme en packagé ; les bases create_all héritées sans alembic_version sont adoptées (stamp puis upgrade).
 - [✅] L'API locale démarre en arrière-plan et l'application attend qu'elle réponde (127.0.0.1 uniquement).
 - [✅] Échec de démarrage de l'API → message français clair, pas de fenêtre figée.
 - [👁] Boîte de dialogue PIN au lancement ; PIN incorrect → message + champ resélectionné.
@@ -19,8 +20,10 @@ appels de démarrage dans `main.py`, exécutés avant la création de la fenêtr
 - [✅] Mode RTL (POS_FORCE_RTL=1) : l'application démarre et les six écrans se construisent en miroir — indicateur de navigation, icônes et badges vivent dans des layouts (aucun positionnement absolu).
 
 ## Fenêtre / shell
-- [👁] Fenêtre sans cadre : barre de titre personnalisée (icône + titre) ; boutons – / □ / ✕ fonctionnels.
+- [👁] Fenêtre sans cadre : barre de titre personnalisée (icône + titre) ; boutons Réduire / Plein écran / Agrandir / Fermer en ICÔNES TOUJOURS VISIBLES (plus besoin de survol), avec info-bulles.
+- [✅] Plein écran : bouton de barre de titre ET raccourci F11, bascule aller-retour vérifiée ; l'icône passe expand ⇄ compress.
 - [👁] Glisser la barre de titre déplace la fenêtre ; double-clic = agrandir/restaurer.
+- [✅] Taille adaptative : la fenêtre s'ouvre à 1180×720 CLAMPÉE à l'écran réel (barre des tâches exclue) et centrée ; tous les dialogues sont limités à 90 % de l'écran avec défilement interne (la fiche produit ne déborde plus jamais d'un petit écran).
 - [✅] Barre latérale : 6 entrées (Caisse / Stock / Clients / Statistiques / Alertes / Réglages), icône + libellé, indicateur d'élément actif, navigation rafraîchit l'écran cible.
 - [✅] Badge de notification sur « Alertes » : total stock faible + crédits, alimenté par GET /alerts (poll 30 s + rafraîchi après chaque vente/paiement).
 
@@ -68,11 +71,12 @@ appels de démarrage dans `main.py`, exécutés avant la création de la fenêtr
 - [✅] États vides dédiés pour chaque section (« Aucun produit sous son seuil », « Aucun crédit en attente »).
 
 ## Réglages
-- [✅] Champs reçu (nom boutique, téléphone, adresse, message de bas de page, payé/reste) avec APERÇU du reçu re-rendu à chaque frappe (mock local fidèle au layout du backend).
+- [✅] Champs reçu (nom boutique, téléphone, adresse, message de bas de page, payé/reste) avec APERÇU du reçu re-rendu à chaque frappe (mock local fidèle au layout du backend, rendu en un seul bloc monospace — aucun chevauchement possible).
 - [✅] Sauvegarde → PUT /settings (PIN serveur) ; sans PIN → message français dédié.
 - [✅] Couleur d'accentuation : nuanciers prédéfinis + « Personnalisée… » (QColorDialog) ; après sauvegarde le style est ré-appliqué EN DIRECT (vérifié : la nouvelle couleur apparaît dans la feuille de style active).
 - [✅] Réglages persistés côté serveur (round-trip vérifié).
 - [👁] Langue : Français actif ; « العربية (à venir) » visible mais désactivée — pas d'échec silencieux.
+- [✅] Zone dangereuse « Tout supprimer » : le code PIN doit être TAPÉ dans le dialogue (le PIN mémorisé n'est jamais réutilisé) ; PIN erroné → refus serveur, rien n'est effacé ; PIN correct → toutes les données ET les images sont effacées, l'application se ferme proprement.
 
 ## Robustesse (toutes pages)
 - [✅] Toute erreur API → `ApiError` → message français structuré ; aucune exception non gérée sur le drive complet.

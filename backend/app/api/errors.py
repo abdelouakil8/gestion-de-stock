@@ -9,6 +9,7 @@ so the frontend can show `message` directly to a non-technical user.
 """
 
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -22,6 +23,8 @@ from app.core.exceptions import (
     InvalidPriceLevelsError,
     InvalidQuantityError,
     NotFoundError,
+    SaleCustomerAlreadySetError,
+    SaleHasCustomerError,
 )
 
 _STATUS_BY_CODE = {
@@ -31,6 +34,12 @@ _STATUS_BY_CODE = {
     InvalidPaymentAmountError.code: status.HTTP_422_UNPROCESSABLE_CONTENT,
     InvalidImageError.code: status.HTTP_422_UNPROCESSABLE_CONTENT,
     ImageTooLargeError.code: status.HTTP_413_CONTENT_TOO_LARGE,
+    # Sale customer-attach conflicts: the sale already carries a customer,
+    # so both the "attach customer" and the "mark anonymous" endpoints must
+    # refuse. Explicit here even though 409 is the fallback below — keeps
+    # the mapping table self-documenting.
+    SaleCustomerAlreadySetError.code: status.HTTP_409_CONFLICT,
+    SaleHasCustomerError.code: status.HTTP_409_CONFLICT,
     # Business-rule rejections (price floor, stock, unavailable product,
     # credit without customer, overpayment, duplicate phone…) default to
     # 409 Conflict below.
@@ -84,12 +93,16 @@ def install_error_handlers(app: FastAPI) -> None:
             request.url.path,
             exc.errors(),
         )
+        # jsonable_encoder makes the raw pydantic errors JSON-safe: a Money
+        # field that parses then fails a bound (ge/gt) carries a Decimal in
+        # `input`/`ctx`, which the default JSON encoder cannot serialize —
+        # without this the 422 would turn into a 500.
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content=_envelope(
                 "validation_error",
                 "Données invalides. Veuillez vérifier les champs saisis.",
-                {"errors": exc.errors()},
+                {"errors": jsonable_encoder(exc.errors())},
             ),
         )
 

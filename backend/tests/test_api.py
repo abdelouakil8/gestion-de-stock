@@ -263,6 +263,28 @@ def test_below_floor_override_rejected_with_409(client):
     assert after["stock_quantity"] == 50
 
 
+def test_invalid_money_bound_returns_clean_422_not_500(client):
+    """A Money field that parses then fails its bound (ge=0) carries a
+    Decimal in the pydantic error; the validation handler must JSON-encode
+    it (jsonable_encoder) and return 422 — never a 500."""
+    cat = build_catalog(client)
+    response = client.post(
+        "/api/v1/products",
+        headers=PIN_HEADER,
+        json={
+            "store_id": cat["store"]["id"],
+            "name": "Prix négatif",
+            "cost_price": "-1.00",
+            "price_detail": "40.00",
+            "price_gros": "37.50",
+            "price_super_gros": "30.00",
+            "stock_quantity": 1,
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
 def test_override_at_exact_floor_allowed(client):
     cat = build_catalog(client)
     response = client.post(

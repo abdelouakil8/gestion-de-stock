@@ -11,6 +11,10 @@ from ui import strings
 
 LEVELS = ["detail", "gros", "super_gros"]
 
+# The optional 4th state; only present when the selector is built with
+# allow_manual=True. Existing 3-state callers never see it.
+MANUAL_LEVEL = "manual"
+
 
 class PriceLevelSelector(QWidget):
     def __init__(
@@ -18,9 +22,16 @@ class PriceLevelSelector(QWidget):
         on_change: Callable[[str], None] | None = None,
         level: str = "detail",
         parent=None,
+        allow_manual: bool = False,
     ) -> None:
         super().__init__(parent)
         self._on_change = on_change
+        self._allow_manual = allow_manual
+        # Instance-local level list so the module-level LEVELS constant that
+        # 3-state callers rely on stays untouched.
+        self._levels = list(LEVELS)
+        if allow_manual:
+            self._levels.append(MANUAL_LEVEL)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
@@ -28,8 +39,12 @@ class PriceLevelSelector(QWidget):
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
         self._buttons: dict[str, QPushButton] = {}
-        for value in LEVELS:
-            button = QPushButton(strings.PRICE_LEVEL_LABELS[value])
+        for value in self._levels:
+            if value == MANUAL_LEVEL:
+                label = strings.PRICE_LEVEL_MANUAL
+            else:
+                label = strings.PRICE_LEVEL_LABELS[value]
+            button = QPushButton(label)
             button.setObjectName("Segment")
             button.setCheckable(True)
             button.setCursor(Qt.CursorShape.PointingHandCursor)

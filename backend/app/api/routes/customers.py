@@ -15,9 +15,10 @@ def list_customers(
     store_id: UUID,
     db: DbDep,
     q: str | None = Query(default=None, max_length=200),
+    limit: int | None = Query(default=None, ge=1, le=200),
 ) -> list:
-    """All customers of the store; q searches name and phone."""
-    return customers.list_customers(db, store_id, query=q)
+    """All customers of the store; q runs the smart search, limit caps results."""
+    return customers.list_customers(db, store_id, query=q, limit=limit)
 
 
 @router.get("/{customer_id}", response_model=CustomerRead)

@@ -31,6 +31,9 @@ class SaleItemUpdate(BaseModel):
 class SaleItemRead(ReadSchema, SaleItemBase):
     sale_id: UUID
     product_id: UUID
+    packaging_id: UUID | None = None
+    packaging_label: str | None = None
+    unit_count: int = 1
 
 
 class PaymentRead(ReadSchema):
@@ -63,10 +66,20 @@ class SaleUpdate(BaseModel):
 class SaleRead(ReadSchema, SaleBase):
     store_id: UUID
     customer_id: UUID | None = None
+    customer_name: str | None = None
+    customer_phone: str | None = None
+    guest_confirmed_at: datetime | None = None
     paid_amount: Money
     balance: Money
     items: list[SaleItemRead]
     payments: list[PaymentRead] = []
+
+
+class AssignCustomerRequest(BaseModel):
+    """Body of POST /sales/{id}/customer — attach a client to a null-customer
+    sale. Confirm-guest needs no body."""
+
+    customer_id: UUID
 
 
 class CartItem(BaseModel):
@@ -83,6 +96,10 @@ class CartItem(BaseModel):
     quantity: int = Field(ge=1)
     price_level: PriceLevel = "detail"
     unit_price_override: Money | None = None
+    # When set, the server resolves the price from THIS packaging's price
+    # level, applies THAT packaging's super_gros as the floor, and decrements
+    # stock by quantity * packaging.unit_count. None -> current behavior.
+    packaging_id: UUID | None = None
 
 
 class PaymentInfo(BaseModel):

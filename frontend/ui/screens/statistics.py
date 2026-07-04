@@ -92,6 +92,8 @@ class RuleCard(QWidget):
     def __init__(self, rule: dict, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("RuleCard")
+        # QWidget subclass: required for the QSS card background/border.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(
             SPACING["md"], SPACING["sm"], SPACING["md"], SPACING["sm"]

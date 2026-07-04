@@ -55,9 +55,17 @@ def build_receipt_pdf(
         bool(settings and settings.address)
     )
     credit_extra = (3 + int(customer is not None)) if show_credit else 0
+    # Packaging lines get a 3rd row (the base-unit breakdown).
+    packaging_extra = sum(
+        1
+        for item in items
+        if getattr(item, "packaging_label", None) and (getattr(item, "unit_count", 1) or 1) > 1
+    )
     # 10 fixed header/footer lines + optional header/credit lines
-    # + up to 2 lines per item.
-    height = (10 + header_extra + credit_extra + 2 * len(items)) * _LINE + 2 * _MARGIN
+    # + up to 2 lines per item (+1 for each packaged item).
+    height = (
+        10 + header_extra + credit_extra + packaging_extra + 2 * len(items)
+    ) * _LINE + 2 * _MARGIN
 
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=(_WIDTH, height))
@@ -92,6 +100,12 @@ def build_receipt_pdf(
     total_check = Decimal("0.00")
     for item in items:
         name = item.product.name if item.product else "Produit"
+        # A priced packaging (carton) sold on this line: annotate the product
+        # name with the snapshotted packaging label so the receipt survives
+        # later packaging edits/deletes.
+        label = getattr(item, "packaging_label", None)
+        if label:
+            name = f"{name} ({label})"
         if len(name) > 38:
             name = name[:37] + "…"
         line(name, font="Helvetica-Bold")
@@ -99,6 +113,15 @@ def build_receipt_pdf(
             f"  {item.quantity} x {item.unit_price_applied}",
             f"{item.line_total}",
         )
+        # Show the base-unit breakdown for packagings (e.g. "2 x 24 = 48 u.")
+        # so the merchant sees how many base units left the shelf.
+        unit_count = getattr(item, "unit_count", 1) or 1
+        if label and unit_count > 1:
+            line(
+                f"  soit {item.quantity} x {unit_count} = "
+                f"{item.quantity * unit_count} u.",
+                size=8,
+            )
         total_check += item.line_total
 
     line("-" * 42)

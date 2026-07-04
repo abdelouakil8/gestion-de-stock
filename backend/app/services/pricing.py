@@ -14,11 +14,13 @@ from app.core.exceptions import (
     InvalidQuantityError,
     PriceBelowFloorError,
 )
-from app.models import Product
+from app.models import Product, ProductPackaging
 
 _TWO_PLACES = Decimal("0.01")
 
-# Price level -> Product column carrying that level's unit price.
+# Price level -> column carrying that level's unit price. Both Product and
+# ProductPackaging expose the same triplet (price_detail/gros/super_gros), so
+# the same mapping drives base-unit and packaging price resolution.
 PRICE_LEVEL_FIELDS = {
     "detail": "price_detail",
     "gros": "price_gros",
@@ -51,12 +53,39 @@ def resolve_unit_price(
     return getattr(product, field)
 
 
-def validate_price_floor(product: Product, unit_price: Decimal) -> None:
-    """Reject (never clamp) any unit price below the floor (super gros)."""
-    if unit_price < product.price_super_gros:
+def resolve_packaging_price(
+    packaging: ProductPackaging, price_level: str = "detail"
+) -> Decimal:
+    """Server-side price resolution for a priced packaging (carton): the
+    chosen named level from the packaging's OWN price triplet. The per-package
+    price the cashier is charged — quantity multiplies it into the line total,
+    unit_count only affects stock/cost, never revenue."""
+    field = PRICE_LEVEL_FIELDS.get(price_level)
+    if field is None:
+        # Unreachable through the API (Pydantic Literal), kept as a guard
+        # for direct service callers.
+        raise InvalidPriceLevelsError(
+            packaging.price_detail,
+            packaging.price_gros,
+            packaging.price_super_gros,
+        )
+    return getattr(packaging, field)
+
+
+def validate_price_floor(
+    product: Product, unit_price: Decimal, floor: Decimal | None = None
+) -> None:
+    """Reject (never clamp) any unit price below the floor (super gros).
+
+    floor defaults to the product's own super gros; pass a packaging's
+    price_super_gros to floor-check a per-package price against THAT
+    packaging's minimum. product is still used for the error's product name.
+    """
+    effective_floor = product.price_super_gros if floor is None else floor
+    if unit_price < effective_floor:
         raise PriceBelowFloorError(
             product_name=product.name,
-            floor=product.price_super_gros,
+            floor=effective_floor,
             attempted=unit_price,
         )
 

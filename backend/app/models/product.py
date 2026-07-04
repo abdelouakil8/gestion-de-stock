@@ -10,6 +10,7 @@ from app.db.types import Money
 
 if TYPE_CHECKING:
     from app.models.category import Category
+    from app.models.product_packaging import ProductPackaging
 
 
 class Product(BaseModel, StoreScopedMixin):
@@ -31,6 +32,11 @@ class Product(BaseModel, StoreScopedMixin):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     # SKU / EAN — keyboard-wedge barcode scanners type this string at checkout.
     barcode: Mapped[str | None] = mapped_column(String(64), index=True)
+    # Precomputed normalized text: NFKC + casefold + accent/tashkeel folding,
+    # used by smart search.
+    search_text: Mapped[str] = mapped_column(
+        String(400), nullable=False, default="", server_default=""
+    )
     cost_price: Mapped[Decimal] = mapped_column(Money, nullable=False)
     # Named sale prices (Phase 6 — supersedes quantity-tier resolution).
     # price_super_gros doubles as the merchant's absolute floor: no sale
@@ -47,3 +53,17 @@ class Product(BaseModel, StoreScopedMixin):
     is_active: Mapped[bool] = mapped_column(nullable=False, default=True)
 
     category: Mapped["Category | None"] = relationship(back_populates="products")
+    # Priced packagings (cartons) — additional sale units of THIS product,
+    # each with its own price triplet. No delete-orphan cascade: packagings
+    # are soft-deleted in the service layer, never removed by collection
+    # edits. The primaryjoin hides soft-deleted rows so ProductRead only ever
+    # serializes live packagings; the service queries active rows directly
+    # when it needs to soft-delete the current set (see _sync_packagings).
+    packagings: Mapped[list["ProductPackaging"]] = relationship(
+        order_by="ProductPackaging.position",
+        primaryjoin=(
+            "and_(Product.id == ProductPackaging.product_id, "
+            "ProductPackaging.deleted_at.is_(None))"
+        ),
+        viewonly=True,
+    )

@@ -7,18 +7,16 @@ from app.core.logging import configure_logging
 
 
 def _ensure_schema() -> None:
-    """First-run bootstrap for packaged installs: create tables when absent.
+    """Create-or-migrate the database at startup (dev AND packaged).
 
-    Development and upgrades keep using Alembic migrations; this only fires
-    on a brand-new database file (ORM metadata — no raw SQL).
+    Every schema change ships as an Alembic migration; running them here
+    means an existing merchant database is upgraded in place on the first
+    launch after an update — no manual `alembic upgrade head` ever.
     """
-    from sqlalchemy import inspect
-
-    from app import models
+    from app.db.migrate import prepare_database
     from app.db.session import engine
 
-    if "stores" not in inspect(engine).get_table_names():
-        models.Base.metadata.create_all(engine)
+    prepare_database(engine)
 
 
 def create_app() -> FastAPI:

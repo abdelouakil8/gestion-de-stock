@@ -278,7 +278,7 @@ class CustomersScreen(QWidget):
             self._on_stats_error,
         )
         run_api(
-            lambda: self.api.list_sales(self.store_id),
+            lambda: self.api.list_sales(self.store_id, customer_id=customer_id),
             self._on_sales,
             lambda err: show_error(self, err.message),
         )

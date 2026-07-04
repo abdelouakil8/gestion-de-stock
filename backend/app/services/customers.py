@@ -9,14 +9,21 @@ units), so SQL SUMs are exact integer arithmetic — no float drift.
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import desc, func, or_, select, type_coerce
+from sqlalchemy import desc, func, select, type_coerce
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import CustomerPhoneExistsError
+from app.core.textnorm import normalize_text
 from app.db.types import Money
 from app.models import Customer, Product, Sale, SaleItem
 from app.schemas.customer import CustomerCreate, CustomerUpdate
 from app.schemas.statistics import CustomerStats, TopCustomer
+from app.services import search
+
+
+def _customer_search_text(name: str, phone: str, note: str | None) -> str:
+    """Canonical search string — mirrored in the migration backfill."""
+    return normalize_text(f"{name} {phone} {note or ''}")
 
 
 def _phone_taken(
@@ -36,6 +43,9 @@ def create_customer(db: Session, data: CustomerCreate) -> Customer:
     if _phone_taken(db, data.store_id, data.phone):
         raise CustomerPhoneExistsError(data.phone)
     customer = Customer(**data.model_dump())
+    customer.search_text = _customer_search_text(
+        customer.name, customer.phone, customer.note
+    )
     db.add(customer)
     db.commit()
     db.refresh(customer)
@@ -51,16 +61,29 @@ def get_customer(db: Session, customer_id: UUID) -> Customer | None:
 
 
 def list_customers(
-    db: Session, store_id: UUID, query: str | None = None
+    db: Session,
+    store_id: UUID,
+    *,
+    query: str | None = None,
+    limit: int | None = None,
 ) -> list[Customer]:
-    """All customers of a store, optionally filtered by name or phone."""
-    stmt = select(Customer).where(
-        Customer.store_id == store_id, Customer.deleted_at.is_(None)
+    """All customers of a store, optionally filtered by name, phone or note.
+
+    With no query this returns every non-deleted customer of the store ordered
+    by name (no limit). A query delegates to the smart search engine (LIKE
+    prefilter + fuzzy fallback), which owns the matching logic.
+    """
+    if query is None and limit is None:
+        return list(
+            db.scalars(
+                select(Customer)
+                .where(Customer.store_id == store_id, Customer.deleted_at.is_(None))
+                .order_by(Customer.name)
+            )
+        )
+    return search.search_customers(
+        db, store_id=store_id, query=query, limit=(limit or 20)
     )
-    if query:
-        like = f"%{query}%"
-        stmt = stmt.where(or_(Customer.name.ilike(like), Customer.phone.ilike(like)))
-    return list(db.scalars(stmt.order_by(Customer.name)))
 
 
 def update_customer(
@@ -76,6 +99,11 @@ def update_customer(
             raise CustomerPhoneExistsError(new_phone)
         for field, value in changes.items():
             setattr(customer, field, value)
+        # Recompute after all fields are merged so name/phone/note changes in
+        # the same PATCH produce a single canonical string.
+        customer.search_text = _customer_search_text(
+            customer.name, customer.phone, customer.note
+        )
         db.commit()
         db.refresh(customer)
     return customer
@@ -119,8 +147,10 @@ def customer_stats(db: Session, customer_id: UUID) -> CustomerStats | None:
             type_coerce(
                 func.coalesce(
                     func.sum(
-                        (SaleItem.unit_price_applied - Product.cost_price)
+                        SaleItem.line_total
+                        - Product.cost_price
                         * SaleItem.quantity
+                        * SaleItem.unit_count
                     ),
                     0,
                 ),

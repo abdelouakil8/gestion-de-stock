@@ -6,6 +6,7 @@ before any image is uploaded. Low-spec friendly: one rounded pixmap is
 rendered per widget, no effects.
 """
 
+import shiboken6
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import QLabel
@@ -89,7 +90,10 @@ class Thumb(QLabel):
             return
 
         def deliver(pixmap) -> None:
-            # A recycled widget may have been re-targeted meanwhile.
+            # The widget may have been destroyed (dialog closed, table
+            # rebuilt) or re-targeted while the fetch was in flight.
+            if not shiboken6.isValid(self):
+                return
             if generation != self._generation or pixmap is None:
                 return
             self.setText("")

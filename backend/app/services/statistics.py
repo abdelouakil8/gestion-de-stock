@@ -58,8 +58,10 @@ def sales_summary(
             type_coerce(
                 func.coalesce(
                     func.sum(
-                        (SaleItem.unit_price_applied - Product.cost_price)
+                        SaleItem.line_total
+                        - Product.cost_price
                         * SaleItem.quantity
+                        * SaleItem.unit_count
                     ),
                     0,
                 ),
@@ -92,7 +94,8 @@ def top_products(
         select(
             Product.id.label("product_id"),
             Product.name.label("name"),
-            func.sum(SaleItem.quantity).label("quantity_sold"),
+            # Base units: a package counts as quantity * unit_count units.
+            func.sum(SaleItem.quantity * SaleItem.unit_count).label("quantity_sold"),
             type_coerce(func.sum(SaleItem.line_total), Money()).label("revenue"),
         )
         .join(Sale, SaleItem.sale_id == Sale.id)
@@ -133,15 +136,20 @@ def _range_summary(
 
     return db.execute(
         select(
-            func.coalesce(func.sum(SaleItem.quantity), 0).label("units_sold"),
+            # Base units: a package counts as quantity * unit_count units.
+            func.coalesce(
+                func.sum(SaleItem.quantity * SaleItem.unit_count), 0
+            ).label("units_sold"),
             type_coerce(func.coalesce(func.sum(SaleItem.line_total), 0), Money()).label(
                 "revenue"
             ),
             type_coerce(
                 func.coalesce(
                     func.sum(
-                        (SaleItem.unit_price_applied - Product.cost_price)
+                        SaleItem.line_total
+                        - Product.cost_price
                         * SaleItem.quantity
+                        * SaleItem.unit_count
                     ),
                     0,
                 ),

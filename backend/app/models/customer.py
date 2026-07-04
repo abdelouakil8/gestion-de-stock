@@ -25,3 +25,8 @@ class Customer(BaseModel, StoreScopedMixin):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     phone: Mapped[str] = mapped_column(String(32), nullable=False)
     note: Mapped[str | None] = mapped_column(String(500), default=None)
+    # Precomputed normalized text: NFKC + casefold + accent/tashkeel folding,
+    # used by smart search.
+    search_text: Mapped[str] = mapped_column(
+        String(400), nullable=False, default="", server_default=""
+    )

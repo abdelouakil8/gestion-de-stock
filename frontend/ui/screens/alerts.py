@@ -51,6 +51,8 @@ class _CreditRow(QWidget):
     def __init__(self, credit: dict, on_pay: Callable[[dict], None]) -> None:
         super().__init__()
         self.setObjectName("RuleCard")
+        # QWidget subclass: required for the QSS card background/border.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(
             SPACING["md"], SPACING["sm"], SPACING["md"], SPACING["sm"]

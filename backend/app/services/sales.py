@@ -21,8 +21,10 @@ from app.core.exceptions import (
     InvalidPaymentAmountError,
     NotFoundError,
     ProductUnavailableError,
+    SaleCustomerAlreadySetError,
+    SaleHasCustomerError,
 )
-from app.models import Customer, Payment, Product, Sale, SaleItem
+from app.models import Customer, Payment, Product, ProductPackaging, Sale, SaleItem
 from app.schemas.sale import CheckoutRequest, PaymentInfo, SaleCreate
 from app.services import inventory, pricing
 
@@ -89,18 +91,57 @@ def finalize_sale(db: Session, data: CheckoutRequest) -> Sale:
             if product is None or not product.is_active:
                 raise ProductUnavailableError(line.product_id)
 
-            # The server resolves the price from the chosen named level;
-            # a manual override is allowed but faces the same floor.
-            unit_price = (
-                line.unit_price_override
-                if line.unit_price_override is not None
-                else pricing.resolve_unit_price(
-                    product, line.price_level, line.quantity
+            # A priced packaging (carton) is an ADDITIONAL sale unit of the
+            # same product: its own price triplet and floor, and one package
+            # consumes packaging.unit_count base stock units. When no packaging
+            # is chosen the base unit (unit_count=1, prices on Product) applies.
+            packaging: ProductPackaging | None = None
+            if line.packaging_id is not None:
+                packaging = db.scalar(
+                    select(ProductPackaging).where(
+                        ProductPackaging.id == line.packaging_id,
+                        ProductPackaging.product_id == product.id,
+                        ProductPackaging.store_id == data.store_id,
+                        ProductPackaging.deleted_at.is_(None),
+                        ProductPackaging.is_active.is_(True),
+                    )
                 )
-            )
-            pricing.validate_price_floor(product, unit_price)
-            inventory.decrement_stock(db, product, line.quantity)
+                if packaging is None:
+                    raise NotFoundError("conditionnement", line.packaging_id)
 
+            # The server resolves the price from the chosen named level (of the
+            # packaging when set, else the product); a manual override is
+            # allowed but faces the same floor (the packaging's super gros when
+            # a packaging is sold). quantity is the number of packages; the
+            # per-package price is what the customer is charged.
+            if packaging is not None:
+                unit_price = (
+                    line.unit_price_override
+                    if line.unit_price_override is not None
+                    else pricing.resolve_packaging_price(packaging, line.price_level)
+                )
+                pricing.validate_price_floor(
+                    product, unit_price, floor=packaging.price_super_gros
+                )
+                unit_count = packaging.unit_count
+            else:
+                unit_price = (
+                    line.unit_price_override
+                    if line.unit_price_override is not None
+                    else pricing.resolve_unit_price(
+                        product, line.price_level, line.quantity
+                    )
+                )
+                pricing.validate_price_floor(product, unit_price)
+                unit_count = 1
+
+            # Stock is measured in BASE units: a line of `quantity` packages of
+            # `unit_count` each takes quantity * unit_count off the shelf.
+            base_units = line.quantity * unit_count
+            inventory.decrement_stock(db, product, base_units)
+
+            # Revenue is per-package price × number of packages; base units
+            # never touch the line total (only stock and cost/profit).
             amount = pricing.line_total(unit_price, line.quantity)
             total += amount
             sale_items.append(
@@ -109,6 +150,9 @@ def finalize_sale(db: Session, data: CheckoutRequest) -> Sale:
                     product_id=product.id,
                     quantity=line.quantity,
                     price_level=line.price_level,
+                    packaging_id=packaging.id if packaging is not None else None,
+                    packaging_label=packaging.label if packaging is not None else None,
+                    unit_count=unit_count,
                     unit_price_applied=unit_price,
                     line_total=amount,
                 )
@@ -159,23 +203,149 @@ def create_sale(db: Session, data: SaleCreate) -> Sale:
     return sale
 
 
+def _attach_customer_fields(sale: Sale) -> Sale:
+    """Mirror the attached customer's name/phone onto the Sale instance.
+
+    These are read-only convenience fields injected onto the ORM object so
+    SaleRead (from_attributes) can surface them without a separate query.
+    None when the sale carries no customer (walk-in / anonymous).
+    """
+    customer = sale.customer
+    sale.customer_name = customer.name if customer is not None else None
+    sale.customer_phone = customer.phone if customer is not None else None
+    return sale
+
+
 def get_sale(db: Session, sale_id: UUID) -> Sale | None:
-    return db.scalar(
+    sale = db.scalar(
         select(Sale)
-        .options(selectinload(Sale.items), selectinload(Sale.payments))
+        .options(
+            selectinload(Sale.items),
+            selectinload(Sale.payments),
+            selectinload(Sale.customer),
+        )
         .where(Sale.id == sale_id, Sale.deleted_at.is_(None))
     )
+    if sale is not None:
+        _attach_customer_fields(sale)
+    return sale
 
 
-def list_sales(db: Session, store_id: UUID) -> list[Sale]:
-    return list(
-        db.scalars(
-            select(Sale)
-            .options(selectinload(Sale.items), selectinload(Sale.payments))
-            .where(Sale.store_id == store_id, Sale.deleted_at.is_(None))
-            .order_by(Sale.created_at.desc())
+def list_sales(
+    db: Session,
+    store_id: UUID,
+    *,
+    customer_id: UUID | None = None,
+    guest: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[Sale]:
+    """List a store's sales, newest first, with optional filters.
+
+    guest: "pending" -> unresolved walk-in (no customer, not confirmed);
+    "confirmed" -> intentionally anonymous (no customer, confirmed);
+    "any" -> any sale without a customer.
+    date_from/date_to bound created_at on the half-open interval [from, to).
+    limit defaults to None (no LIMIT) for backward-compat with the existing
+    no-arg call site; when passed it is clamped to [1, 500]. offset >= 0.
+    """
+    stmt = (
+        select(Sale)
+        .options(
+            selectinload(Sale.items),
+            selectinload(Sale.payments),
+            selectinload(Sale.customer),
+        )
+        .where(Sale.store_id == store_id, Sale.deleted_at.is_(None))
+        .order_by(Sale.created_at.desc())
+    )
+
+    if customer_id is not None:
+        stmt = stmt.where(Sale.customer_id == customer_id)
+
+    if guest == "pending":
+        stmt = stmt.where(
+            Sale.customer_id.is_(None), Sale.guest_confirmed_at.is_(None)
+        )
+    elif guest == "confirmed":
+        stmt = stmt.where(
+            Sale.customer_id.is_(None), Sale.guest_confirmed_at.is_not(None)
+        )
+    elif guest == "any":
+        stmt = stmt.where(Sale.customer_id.is_(None))
+
+    if date_from is not None:
+        stmt = stmt.where(Sale.created_at >= date_from)
+    if date_to is not None:
+        stmt = stmt.where(Sale.created_at < date_to)
+
+    offset = max(0, offset)
+    if limit is not None:
+        stmt = stmt.limit(max(1, min(500, limit)))
+    if offset:
+        stmt = stmt.offset(offset)
+
+    sales = list(db.scalars(stmt))
+    for sale in sales:
+        _attach_customer_fields(sale)
+    return sales
+
+
+def assign_customer(db: Session, sale_id: UUID, customer_id: UUID) -> Sale:
+    """Attach a client to a sale that has none — the only path that ever sets
+    customer_id after checkout. Assigning also cancels any anonymous mark."""
+    sale = db.scalar(
+        select(Sale).where(Sale.id == sale_id, Sale.deleted_at.is_(None))
+    )
+    if sale is None:
+        raise NotFoundError("vente", sale_id)
+    if sale.customer_id is not None:
+        raise SaleCustomerAlreadySetError(sale_id)
+
+    customer = db.scalar(
+        select(Customer).where(
+            Customer.id == customer_id,
+            Customer.store_id == sale.store_id,
+            Customer.deleted_at.is_(None),
         )
     )
+    if customer is None:
+        raise NotFoundError("client", customer_id)
+
+    sale.customer_id = customer.id
+    # Assigning a real customer supersedes any "leave anonymous" choice.
+    sale.guest_confirmed_at = None
+    db.commit()
+    db.refresh(sale)
+    sale.customer = customer
+    return _attach_customer_fields(sale)
+
+
+def confirm_guest(db: Session, sale_id: UUID) -> Sale:
+    """Mark a walk-in (no-customer) sale as intentionally anonymous.
+
+    Idempotent: if already confirmed the first timestamp is kept."""
+    sale = db.scalar(
+        select(Sale)
+        .options(
+            selectinload(Sale.items),
+            selectinload(Sale.payments),
+            selectinload(Sale.customer),
+        )
+        .where(Sale.id == sale_id, Sale.deleted_at.is_(None))
+    )
+    if sale is None:
+        raise NotFoundError("vente", sale_id)
+    if sale.customer_id is not None:
+        raise SaleHasCustomerError(sale_id)
+
+    if sale.guest_confirmed_at is None:
+        sale.guest_confirmed_at = datetime.now(UTC)
+        db.commit()
+        db.refresh(sale)
+    return _attach_customer_fields(sale)
 
 
 def soft_delete_sale(db: Session, sale_id: UUID) -> Sale | None:

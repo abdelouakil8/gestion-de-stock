@@ -157,3 +157,29 @@ class ImageTooLargeError(AppError):
             size=size,
             max_size=max_size,
         )
+
+
+class SaleCustomerAlreadySetError(AppError):
+    """Attempt to attach a customer to a sale that already carries one."""
+
+    code = "sale_customer_already_set"
+
+    def __init__(self, sale_id: object) -> None:
+        super().__init__(
+            "Cette vente est déjà associée à un client.",
+            sale_id=str(sale_id),
+        )
+
+
+class SaleHasCustomerError(AppError):
+    """Attempt to mark a sale as intentionally anonymous when it already
+    has a customer attached — the two paths are mutually exclusive."""
+
+    code = "sale_has_customer"
+
+    def __init__(self, sale_id: object) -> None:
+        super().__init__(
+            "Cette vente est déjà associée à un client — impossible de la "
+            "marquer anonyme.",
+            sale_id=str(sale_id),
+        )

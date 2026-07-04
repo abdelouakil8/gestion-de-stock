@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
-    QPushButton,
+    QLineEdit,
     QRadioButton,
     QVBoxLayout,
     QWidget,
@@ -27,7 +27,7 @@ from services.workers import run_api
 from ui import format as fmt
 from ui import strings
 from ui.styles.tokens import SPACING
-from ui.widgets.customer_dialogs import CustomerPickerDialog
+from ui.widgets.customer_search import CustomerSearchBox
 from ui.widgets.modal import ModalDialog, show_error
 
 
@@ -91,15 +91,29 @@ class CheckoutPaymentDialog(ModalDialog):
         self.remaining_label.setObjectName("FieldHint")
         partial_layout.addWidget(self.remaining_label)
 
+        # Attached-customer line (shown once a customer is picked/created).
         customer_row = QHBoxLayout()
         customer_row.addWidget(QLabel(strings.CHECKOUT_CUSTOMER_LABEL))
         self.customer_label = QLabel("")
         self.customer_label.setObjectName("Secondary")
         customer_row.addWidget(self.customer_label, stretch=1)
-        pick_button = QPushButton(strings.CHECKOUT_CUSTOMER_PICK)
-        pick_button.clicked.connect(self._pick_customer)
-        customer_row.addWidget(pick_button)
         partial_layout.addLayout(customer_row)
+
+        # Attach an existing customer (search by name/phone).
+        partial_layout.addWidget(QLabel(strings.PAYMENT_ATTACH_EXISTING))
+        self.customer_search = CustomerSearchBox(
+            self.api, self.store_id, self._on_customer_attached
+        )
+        partial_layout.addWidget(self.customer_search)
+
+        # ...or create a new one inline with name + phone.
+        partial_layout.addWidget(QLabel(strings.PAYMENT_CREATE_NEW))
+        self.new_name_input = QLineEdit()
+        self.new_name_input.setPlaceholderText(strings.PAYMENT_NEW_CUSTOMER_NAME)
+        partial_layout.addWidget(self.new_name_input)
+        self.new_phone_input = QLineEdit()
+        self.new_phone_input.setPlaceholderText(strings.PAYMENT_NEW_CUSTOMER_PHONE)
+        partial_layout.addWidget(self.new_phone_input)
 
         self.customer_hint = QLabel(strings.PAYMENT_CUSTOMER_REQUIRED)
         self.customer_hint.setObjectName("FieldError")
@@ -122,16 +136,31 @@ class CheckoutPaymentDialog(ModalDialog):
         if partial:
             self.amount_input.setFocus()
             self.amount_input.selectAll()
-        self.adjustSize()
+        # The partial block is shown/hidden after first layout — grow/shrink
+        # the dialog to fit it (a plain adjustSize can't, the scroll area's
+        # size hint is frozen from construction).
+        self.fit_to_content()
+
+    def _on_customer_attached(self, customer: dict) -> None:
+        self.customer = customer
+        self.customer_search.clear()
+        self._refresh_customer()
 
     def _refresh_customer(self) -> None:
         if self.customer:
             self.customer_label.setText(
                 f"{self.customer['name']} · {self.customer['phone']}"
             )
+            # A customer is attached: hide the attach/create affordances.
+            self.customer_search.hide()
+            self.new_name_input.hide()
+            self.new_phone_input.hide()
             self.customer_hint.setVisible(False)
         else:
             self.customer_label.setText(strings.CHECKOUT_CUSTOMER_ANONYMOUS)
+            self.customer_search.show()
+            self.new_name_input.show()
+            self.new_phone_input.show()
             self.customer_hint.setVisible(True)
 
     def _update_remaining(self) -> None:
@@ -139,12 +168,6 @@ class CheckoutPaymentDialog(ModalDialog):
         self.remaining_label.setText(
             f"{strings.PAYMENT_REMAINING_LABEL} : {fmt.fmt_money(remaining)}"
         )
-
-    def _pick_customer(self) -> None:
-        dialog = CustomerPickerDialog(self.api, self.store_id, parent=self)
-        if dialog.exec() and dialog.selected:
-            self.customer = dialog.selected
-            self._refresh_customer()
 
     # ------------------------------------------------------------- accept
 
@@ -156,17 +179,43 @@ class CheckoutPaymentDialog(ModalDialog):
             super().accept()
             return
         # Partial: customer mandatory, amount < total (server re-checks).
-        if not self.customer:
-            show_error(self, strings.PAYMENT_CUSTOMER_REQUIRED)
-            return
         amount = self.amount_input.decimal()
         if amount >= self.total:
             show_error(self, strings.PAYMENT_AMOUNT_TOO_HIGH)
             return
+        if self.customer:
+            self._finish_partial(self.customer["id"])
+            return
+        # No attached customer: try to create one inline from name + phone.
+        name = self.new_name_input.text().strip()
+        phone = self.new_phone_input.text().strip()
+        if not name or not phone:
+            show_error(self, strings.PAYMENT_CUSTOMER_REQUIRED)
+            return
+        self.ok_button.setEnabled(False)
+        run_api(
+            lambda: self.api.create_customer(
+                {"store_id": self.store_id, "name": name, "phone": phone}
+            ),
+            self._on_customer_created,
+            self._on_create_error,
+        )
+
+    def _on_customer_created(self, customer: object) -> None:
+        self.customer = customer
+        self.ok_button.setEnabled(True)
+        self._finish_partial(customer["id"])
+
+    def _on_create_error(self, err) -> None:
+        self.ok_button.setEnabled(True)
+        show_error(self, err.message)
+
+    def _finish_partial(self, customer_id: str) -> None:
+        amount = self.amount_input.decimal()
         self.payment = {
             "mode": "partial",
             "amount_paid": f"{amount:.2f}",
-            "customer_id": self.customer["id"],
+            "customer_id": customer_id,
         }
         super().accept()
 

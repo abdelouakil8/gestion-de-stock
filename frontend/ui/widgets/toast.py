@@ -21,6 +21,8 @@ class _Toast(QWidget):
         self.setObjectName("Toast")
         self.setProperty("kind", kind)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        # QWidget subclass: required for the QSS background to paint.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(

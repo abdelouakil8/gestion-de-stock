@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Response, UploadFile
+from fastapi import APIRouter, Query, Response, UploadFile
 
 from app.api.deps import DbDep, OwnerPinDep
 from app.core.exceptions import NotFoundError
@@ -19,8 +19,19 @@ router = APIRouter()
 
 
 @router.get("", response_model=list[ProductRead])
-def list_products(store_id: UUID, db: DbDep) -> list:
-    return products.list_products(db, store_id)
+def list_products(
+    store_id: UUID,
+    db: DbDep,
+    q: str | None = Query(default=None, max_length=200),
+    limit: int | None = Query(default=None, ge=1, le=200),
+    active_only: bool = Query(default=False),
+) -> list:
+    """Store products; q runs the smart search, limit caps results.
+
+    With no filters the full store catalog is returned (frontend prefetch)."""
+    return products.list_products(
+        db, store_id, query=q, limit=limit, active_only=active_only
+    )
 
 
 @router.get("/by-barcode/{barcode}", response_model=ProductRead)

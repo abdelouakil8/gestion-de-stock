@@ -16,7 +16,7 @@ from pathlib import Path
 
 import qtawesome as qta
 from loguru import logger
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -37,7 +37,7 @@ from ui import format as fmt
 from ui import strings
 from ui.styles.tokens import ICON_SIZES, NEUTRAL, SPACING, THUMB_SIZES
 from ui.widgets.badge import Badge
-from ui.widgets.customer_dialogs import CustomerPickerDialog
+from ui.widgets.customer_search import CustomerSearchBox
 from ui.widgets.modal import show_error
 from ui.widgets.payment_dialogs import CheckoutPaymentDialog
 from ui.widgets.segmented import PriceLevelSelector
@@ -115,7 +115,6 @@ class CheckoutScreen(QWidget):
         super().__init__(parent)
         self.api = api
         self.store_id = store_id
-        self.products: list[dict] = []
         self.cart: list[CartLine] = []
         self.customer: dict | None = None
 
@@ -133,17 +132,17 @@ class CheckoutScreen(QWidget):
         self.customer_label = QLabel(strings.CHECKOUT_CUSTOMER_ANONYMOUS)
         self.customer_label.setObjectName("Secondary")
         header.addWidget(self.customer_label)
-        self.pick_customer_button = QPushButton(
-            qta.icon("fa5s.user-plus", color=NEUTRAL["600"]),
-            strings.CHECKOUT_CUSTOMER_PICK,
+        # Inline search-and-attach box (replaces the picker dialog button).
+        self.customer_search = CustomerSearchBox(
+            self.api, self.store_id, self._on_customer_attached
         )
-        self.pick_customer_button.clicked.connect(self._pick_customer)
-        header.addWidget(self.pick_customer_button)
+        self.customer_search.search.setFixedWidth(280)
+        header.addWidget(self.customer_search)
         self.clear_customer_button = QPushButton(
             qta.icon("fa5s.times", color=NEUTRAL["600"]), ""
         )
         self.clear_customer_button.setObjectName("Ghost")
-        self.clear_customer_button.setToolTip(strings.CHECKOUT_CUSTOMER_CLEAR)
+        self.clear_customer_button.setToolTip(strings.CUSTOMER_DETACH)
         self.clear_customer_button.clicked.connect(self._clear_customer)
         self.clear_customer_button.hide()
         header.addWidget(self.clear_customer_button)
@@ -152,9 +151,16 @@ class CheckoutScreen(QWidget):
         self.search = QLineEdit()
         self.search.setObjectName("SearchInput")
         self.search.setPlaceholderText(strings.CHECKOUT_SEARCH_PLACEHOLDER)
-        self.search.textChanged.connect(self._filter_results)
+        self.search.textChanged.connect(self._on_search_text_changed)
         self.search.returnPressed.connect(self._on_enter)
         layout.addWidget(self.search)
+
+        # Debounced live product search (250 ms); the Enter/barcode fast path
+        # below is never debounced so the scanner stays instant.
+        self._search_debounce = QTimer(self)
+        self._search_debounce.setSingleShot(True)
+        self._search_debounce.setInterval(250)
+        self._search_debounce.timeout.connect(self._run_product_search)
 
         self.results = QListWidget()
         self.results.setMaximumHeight(212)
@@ -214,16 +220,14 @@ class CheckoutScreen(QWidget):
 
         QShortcut(QKeySequence(Qt.Key.Key_F12), self, activated=self._checkout)
 
-        self.refresh_products()
         self._rebuild_table()
 
     # ------------------------------------------------------------ customer
 
-    def _pick_customer(self) -> None:
-        dialog = CustomerPickerDialog(self.api, self.store_id, parent=self)
-        if dialog.exec() and dialog.selected:
-            self.customer = dialog.selected
-            self._refresh_customer_strip()
+    def _on_customer_attached(self, customer: dict) -> None:
+        self.customer = customer
+        self.customer_search.clear()
+        self._refresh_customer_strip()
         self.search.setFocus()
 
     def _clear_customer(self) -> None:
@@ -237,35 +241,44 @@ class CheckoutScreen(QWidget):
                 f"{self.customer['name']} · {self.customer['phone']}"
             )
             self.customer_label.setStyleSheet("font-weight: 600;")
+            self.customer_search.hide()
             self.clear_customer_button.show()
         else:
             self.customer_label.setText(strings.CHECKOUT_CUSTOMER_ANONYMOUS)
             self.customer_label.setStyleSheet("")
+            self.customer_search.show()
             self.clear_customer_button.hide()
 
     # ------------------------------------------------------------ products
 
-    def refresh_products(self) -> None:
-        run_api(
-            lambda: self.api.list_products(self.store_id),
-            self._on_products,
-            lambda err: show_error(self, err.message),
-        )
+    def _on_search_text_changed(self, text: str) -> None:
+        """Debounce live search; empty text hides the results list."""
+        if not text.strip():
+            self._search_debounce.stop()
+            self.results.clear()
+            self.results.hide()
+            return
+        self._search_debounce.start()
 
-    def _on_products(self, products: object) -> None:
-        self.products = [p for p in products if p.get("is_active")]
-
-    def _filter_results(self, text: str) -> None:
-        self.results.clear()
-        query = text.strip().lower()
+    def _run_product_search(self) -> None:
+        query = self.search.text().strip()
         if not query:
             self.results.hide()
             return
-        matches = [
-            p
-            for p in self.products
-            if query in p["name"].lower() or query in (p.get("barcode") or "")
-        ][:8]
+        run_api(
+            lambda: self.api.search_products(
+                self.store_id, query=query, limit=8, active_only=True
+            ),
+            lambda products, q=query: self._show_results(q, products),
+            lambda err: show_error(self, err.message),
+        )
+
+    def _show_results(self, query: str, products: object) -> None:
+        # A newer keystroke may have superseded this in-flight search.
+        if query != self.search.text().strip():
+            return
+        self.results.clear()
+        matches = list(products or [])[:8]
         for product in matches:
             item = QListWidgetItem()
             row = _ResultRow(product)
@@ -275,29 +288,39 @@ class CheckoutScreen(QWidget):
             self.results.setItemWidget(item, row)
         self.results.setVisible(bool(matches))
 
+    def _shown_products(self) -> list[dict]:
+        """Products currently rendered in the results list."""
+        products = []
+        for i in range(self.results.count()):
+            data = self.results.item(i).data(Qt.ItemDataRole.UserRole)
+            if data:
+                products.append(data)
+        return products
+
     # ------------------------------------------------------------- adding
 
     def _on_enter(self) -> None:
         query = self.search.text().strip()
         if not query:
             return
-        # 1) exact barcode in local cache (scanner fast path)
-        for product in self.products:
+        # 1) exact barcode among the currently shown results (fast path)
+        for product in self._shown_products():
             if product.get("barcode") == query:
                 self._add_to_cart(product)
                 return
-        # 2) first filtered name match
-        if self.results.count() > 0:
-            self._on_result_chosen(self.results.item(0))
-            return
-        # 3) unknown barcode → authoritative API lookup
+        # 2) authoritative barcode lookup (scanner path — never debounced)
         run_api(
             lambda: self.api.get_product_by_barcode(self.store_id, query),
             self._add_to_cart,
-            lambda err: show_error(
-                self, strings.CHECKOUT_NO_RESULT.format(query=query)
-            ),
+            lambda err, q=query: self._on_barcode_miss(q),
         )
+
+    def _on_barcode_miss(self, query: str) -> None:
+        # No exact barcode: fall back to the first visible search result.
+        if self.results.count() > 0:
+            self._on_result_chosen(self.results.item(0))
+            return
+        show_error(self, strings.CHECKOUT_NO_RESULT.format(query=query))
 
     def _on_result_chosen(self, item: QListWidgetItem) -> None:
         product = item.data(Qt.ItemDataRole.UserRole)
@@ -453,7 +476,10 @@ class CheckoutScreen(QWidget):
         self.customer = None
         self._refresh_customer_strip()
         self._rebuild_table()
-        self.refresh_products()  # stock changed
+        # Stock changed: drop any stale search results (search is server-side).
+        self.search.clear()
+        self.results.clear()
+        self.results.hide()
         window = self.window()
         if hasattr(window, "refresh_alerts_badge"):
             window.refresh_alerts_badge()  # a credit sale may add an alert

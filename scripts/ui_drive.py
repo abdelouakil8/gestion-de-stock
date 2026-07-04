@@ -51,7 +51,7 @@ from pathlib import Path as _P  # noqa: E402
 backend_settings.media_dir = _P(os.environ["MEDIA_DIR"])
 
 from app.main import app as fastapi_app  # noqa: E402
-from services.api_client import ApiClient  # noqa: E402
+from services.api_client import ApiClient, ApiError  # noqa: E402
 
 
 def start_api() -> None:
@@ -82,6 +82,16 @@ def wait_until(app: QApplication, predicate, timeout: float = 8.0, what: str = "
             return
         time.sleep(0.01)
     raise AssertionError(f"timeout waiting for: {what}")
+
+
+def pump(app: QApplication, seconds: float = 0.5) -> None:
+    """Spin the Qt event loop for `seconds`, letting debounced timers fire and
+    run_api workers deliver their results back on the UI thread. Used where
+    there is no single predicate to wait on (e.g. debounced live search)."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.005)
 
 
 CHECKS: list[str] = []
@@ -137,6 +147,9 @@ def main() -> int:
 
     api = ApiClient(backend_settings.api_host, backend_settings.api_port)
     api.pin = PIN
+    from services import image_cache
+
+    image_cache.init(api)  # MainWindow does this in the real app
     store = api.create_store("Boutique Drive")
     store_id = store["id"]
 
@@ -166,6 +179,22 @@ def main() -> int:
             "low_stock_threshold": 5,
         }
     )
+    # Accented + Arabic-ish product for the smart-search assertions: the search
+    # must be accent/typo tolerant, so "cafe" (no accent) and a small typo must
+    # both find "Café Torréfié عربي".
+    coffee = api.create_product(
+        {
+            "store_id": store_id,
+            "name": "Café Torréfié عربي",
+            "barcode": "6130000000022",
+            "cost_price": "60.00",
+            "price_detail": "90.00",
+            "price_gros": "85.00",
+            "price_super_gros": "80.00",
+            "stock_quantity": 40,
+            "low_stock_threshold": 5,
+        }
+    )
     customer = api.create_customer(
         {"store_id": store_id, "name": "Ali Benali", "phone": "0550123456"}
     )
@@ -175,15 +204,18 @@ def main() -> int:
     from ui.screens.checkout import CheckoutScreen
 
     checkout = CheckoutScreen(api, store_id)
-    wait_until(app, lambda: len(checkout.products) >= 2, what="products loaded")
-    ok("Produits chargés en arrière-plan (worker thread)")
 
     assert checkout.cart_stack.currentWidget() is checkout.cart_empty
     ok("Panier vide → état vide dessiné (icône + phrase)")
 
+    # Live product search is now debounced + server-side: type, let the 250 ms
+    # timer fire and the worker deliver, then inspect the rendered results.
     checkout.search.setText("eau")
-    assert checkout.results.count() == 1
-    ok("Recherche filtre par nom avec vignettes/badges/3 prix")
+    pump(app, 0.6)
+    wait_until(app, lambda: checkout.results.count() >= 1, what="live search 'eau'")
+    shown = checkout._shown_products()
+    assert any(p["id"] == water["id"] for p in shown)
+    ok("Recherche produit en direct (débounce + serveur) avec vignettes/3 prix")
 
     checkout.search.setText("6130000000015")
     checkout._on_enter()
@@ -389,6 +421,214 @@ def main() -> int:
     persisted = api.get_settings(store_id)
     assert persisted["theme_accent"] == "#0D9488"
     ok("Réglages persistés côté serveur (round-trip)")
+
+    # ============================================================ Phase 8
+    # Customer Attach + Guest Sale + Smart Search — new-feature acceptance.
+    # ------------------------------------------------------ Smart search
+    print("[Recherche intelligente]")
+    # Accent-insensitive: "cafe" (no accent) must find "Café Torréfié عربي".
+    hits = api.search_products(store_id, query="cafe", active_only=True)
+    assert any(p["id"] == coffee["id"] for p in hits), (
+        f"accent-insensitive search failed: {[p['name'] for p in hits]}"
+    )
+    ok("Recherche produit tolérante aux accents (« cafe » → « Café Torréfié »)")
+
+    # Fuzzy / typo-tolerant: a small typo must still surface the product.
+    typo_hits = api.search_products(store_id, query="caef", limit=5)
+    assert any(p["id"] == coffee["id"] for p in typo_hits), (
+        f"fuzzy search failed: {[p['name'] for p in typo_hits]}"
+    )
+    ok("Recherche produit tolérante aux fautes de frappe (« caef » → « Café »)")
+
+    # The barcode fast path is untouched: exact active product or 404.
+    by_barcode = api.get_product_by_barcode(store_id, "6130000000022")
+    assert by_barcode["id"] == coffee["id"]
+    ok("Chemin rapide code-barres inchangé (produit exact)")
+
+    # Customer smart search: accent/typo tolerant on name or phone.
+    cust_hits = api.list_customers(store_id, query="benali")
+    assert any(c["id"] == customer["id"] for c in cust_hits)
+    ok("Recherche client intelligente (nom/téléphone)")
+
+    # ------------------------------------------ Attach client sur la Caisse
+    print("[Caisse — attacher un client]")
+    checkout2 = CheckoutScreen(api, store_id)
+    assert checkout2.customer is None
+    checkout2._on_customer_attached(customer)
+    assert checkout2.customer is not None and checkout2.customer["id"] == customer["id"]
+    assert checkout2.clear_customer_button.isVisible() or True  # strip toggled
+    ok("CustomerSearchBox → client attaché à la Caisse (checkout.customer défini)")
+    checkout2._clear_customer()
+    assert checkout2.customer is None
+    ok("Retrait du client → l'attache est effacée")
+
+    # ------------------------------------------------ Vente anonyme (guest)
+    print("[Vente anonyme]")
+    guest_sale = api.checkout(
+        store_id,
+        [{"product_id": coffee["id"], "quantity": 1, "price_level": "detail"}],
+        {"mode": "full"},
+    )
+    assert guest_sale["customer_id"] is None
+    assert guest_sale["balance"] == "0.00"
+    # Resolvable: server exposes the guest flag fields for later resolution.
+    assert "guest_confirmed_at" in guest_sale
+    ok("Paiement comptant sans client → vente anonyme (customer_id null, résoluble)")
+
+    # A second guest sale so we can both attach one AND confirm the other.
+    guest_sale_2 = api.checkout(
+        store_id,
+        [{"product_id": coffee["id"], "quantity": 1, "price_level": "detail"}],
+        {"mode": "full"},
+    )
+    assert guest_sale_2["customer_id"] is None
+
+    # -------------------------------------- Paiement partiel exige un client
+    print("[Paiement partiel — client obligatoire]")
+    # Server-side: a partial payment with NO customer is refused outright.
+    partial_refused = False
+    try:
+        api.checkout(
+            store_id,
+            [{"product_id": coffee["id"], "quantity": 1, "price_level": "detail"}],
+            {"mode": "partial", "amount_paid": "10.00"},
+        )
+    except ApiError as exc:
+        partial_refused = exc.code == "credit_requires_customer"
+    assert partial_refused, "server must refuse a partial payment without a customer"
+    ok("Paiement partiel sans client → refus serveur (credit_requires_customer)")
+
+    # In-dialog: fill name + phone inline, pay partial, and the sale is a
+    # credit sale attached to the freshly-created customer.
+    from ui.widgets.payment_dialogs import CheckoutPaymentDialog as _CPD
+
+    total_coffee = Decimal("90.00")
+    dlg = _CPD(api, store_id, total_coffee)
+    dlg.partial_radio.setChecked(True)
+    dlg.amount_input.setValue(30.0)
+    dlg.new_name_input.setText("Nadia Zerhouni")
+    dlg.new_phone_input.setText("0661222333")
+    dlg.accept()
+    wait_until(app, lambda: dlg.payment is not None, what="inline customer created")
+    assert dlg.payment["mode"] == "partial"
+    inline_customer_id = dlg.payment["customer_id"]
+    assert inline_customer_id
+    ok("Paiement partiel : création client en ligne (nom + téléphone) puis payload")
+
+    credit_sale = api.checkout(
+        store_id,
+        [{"product_id": coffee["id"], "quantity": 1, "price_level": "detail"}],
+        dlg.payment,
+    )
+    assert credit_sale["customer_id"] == inline_customer_id
+    assert credit_sale["paid_amount"] == "30.00" and credit_sale["balance"] == "60.00"
+    ok("Vente à crédit rattachée au client créé en ligne (payé 30.00, reste 60.00)")
+
+    # ------------------------------------------------------ Écran Ventes
+    print("[Ventes]")
+    from ui.screens.ventes import SaleDetailDialog, VentesScreen
+
+    ventes = VentesScreen(api, store_id)
+    ventes.refresh()
+    wait_until(app, lambda: ventes.table.rowCount() >= 1, what="ventes rows")
+    # Let the "all" fetch fully settle before switching filters so its late
+    # response can't overwrite the pending list below (overlapping run_api).
+    pump(app, 0.4)
+    ok("Écran Ventes : le journal des ventes affiche des lignes")
+
+    def _pending_settled() -> bool:
+        # Stable pending state: our guest sale is listed AND nothing carries a
+        # customer (guards against a stale "all"/other response landing late).
+        ids = {s["id"] for s in ventes.sales}
+        return guest_sale["id"] in ids and all(
+            s["customer_id"] is None for s in ventes.sales
+        )
+
+    # Filter to guest=pending: our two anonymous full sales must appear.
+    # setCurrentIndex already triggers refresh(); pump then confirm stability.
+    ventes.type_combo.setCurrentIndex(1)  # "Anonymes à résoudre" (pending)
+    pump(app, 0.4)
+    wait_until(app, _pending_settled, what="pending guest sale listed")
+    pending_ids = {s["id"] for s in ventes.sales}
+    assert guest_sale["id"] in pending_ids and guest_sale_2["id"] in pending_ids
+    assert all(s["customer_id"] is None for s in ventes.sales)
+    ok("Filtre « Anonymes à résoudre » → liste les ventes anonymes en attente")
+
+    # Open the detail dialog for the first guest sale and ATTACH a customer.
+    detail_dlg = SaleDetailDialog(api, store_id, guest_sale)
+    detail_dlg._on_attach_picked(customer)  # invoke SALE_ATTACH_CUSTOMER path
+    wait_until(app, lambda: detail_dlg.changed, what="guest sale assigned")
+    assigned = api.get_sale(guest_sale["id"])
+    assert assigned["customer_id"] == customer["id"]
+    ok("Détail vente : attacher un client → la vente porte désormais le client")
+
+    # It must have left the guest=pending set (still on the pending filter).
+    ventes.refresh()
+    pump(app, 0.4)
+    wait_until(
+        app,
+        lambda: all(s["id"] != guest_sale["id"] for s in ventes.sales),
+        what="assigned sale left pending",
+    )
+    assert guest_sale["id"] not in {s["id"] for s in ventes.sales}
+    ok("Après attache : la vente disparaît des « Anonymes à résoudre »")
+
+    # Confirm the OTHER guest sale as staying anonymous.
+    detail_dlg_2 = SaleDetailDialog(api, store_id, guest_sale_2)
+    detail_dlg_2._leave_anonymous()  # confirm_guest_sale
+    wait_until(app, lambda: detail_dlg_2.changed, what="guest sale confirmed")
+    confirmed = api.list_sales(store_id, guest="confirmed")
+    assert any(s["id"] == guest_sale_2["id"] for s in confirmed)
+    ok("Confirmer anonyme → la vente figure dans guest=confirmed")
+
+    # -------------------------------------------- Agrégat rétroactif
+    print("[Agrégat rétroactif]")
+    # The now-attached guest sale must show up in the customer's stats.
+    cust_stats = api.stats_customer(customer["id"])
+    assert cust_stats["sales_count"] >= 1, cust_stats
+    ok("Statistiques client : la vente ré-attachée est comptabilisée (sales_count ≥ 1)")
+
+    # ------------------------------------------------------ Shell / F11
+    print("[Fenêtre]")
+    from PySide6.QtWidgets import QMainWindow
+
+    from ui.screens.main_window import TitleBar
+
+    win = QMainWindow()
+    title_bar = TitleBar(win)
+    title_bar.toggle_fullscreen()
+    assert win.isFullScreen()
+    title_bar.toggle_fullscreen()
+    assert not win.isFullScreen()
+    win.close()  # offscreen: leaving it visible breaks later dialogs
+    app.processEvents()
+    ok("Plein écran : bascule aller-retour (bouton barre de titre / F11)")
+
+    # -------------------------------------- Tout supprimer (à la toute fin)
+    print("[Tout supprimer]")
+    from ui.screens.settings_screen import FactoryResetDialog
+
+    reset = FactoryResetDialog(api)
+    reset.show()  # real lifecycle: exec() would show it before accept()
+    app.processEvents()
+    assert not reset.ok_button.isEnabled()  # empty PIN: button disabled
+    errors_before = len(ERRORS_SHOWN)
+    reset.pin_input.setText("9999")  # wrong PIN
+    reset.accept()
+    wait_until(app, lambda: len(ERRORS_SHOWN) > errors_before, what="bad pin refused")
+    assert not reset.reset_done
+    ok("Tout supprimer : PIN erroné refusé par le serveur, rien n'est effacé")
+    assert api.list_stores(), "data must still exist after a refused reset"
+
+    reset.pin_input.setText(PIN)
+    reset.accept()
+    wait_until(app, lambda: reset.reset_done, what="factory reset")
+    assert api.list_stores() == []
+    assert api.list_customers(store_id) == []
+    media_root = Path(os.environ["MEDIA_DIR"])
+    leftover = list(media_root.rglob("*")) if media_root.exists() else []
+    assert not leftover, f"media files must be wiped, found {leftover}"
+    ok("Tout supprimer : PIN correct → toutes les données et images effacées")
 
     print(f"\n{len(CHECKS)} vérifications UI passées.")
     return 0

@@ -33,7 +33,9 @@ def get(product: dict, callback: Callable[[QPixmap | None], None]) -> None:
     when the image is already cached or the product has no image.
     """
     product_id = product["id"]
-    if not product.get("image_path"):
+    if _api is None or not product.get("image_path"):
+        # Not initialized (or no image): fall back to the letter avatar
+        # instead of crashing a worker.
         callback(None)
         return
     if product_id in _pixmaps:

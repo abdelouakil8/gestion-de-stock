@@ -14,7 +14,6 @@ CLOSE = "Fermer"
 SAVE = "Enregistrer"
 DELETE = "Archiver"
 EDIT = "Modifier"
-NEW = "Nouveau"
 SEARCH = "Rechercher…"
 REFRESH = "Actualiser"
 CONFIRM_TITLE = "Confirmation"
@@ -49,6 +48,14 @@ PIN_NOT_CONFIGURED = (
     "Pour en définir un : python scripts/set_pin.py <PIN>"
 )
 
+# --- Barre de titre
+TITLEBAR_MINIMIZE = "Réduire"
+TITLEBAR_MAXIMIZE = "Agrandir"
+TITLEBAR_RESTORE = "Restaurer"
+TITLEBAR_FULLSCREEN = "Plein écran (F11)"
+TITLEBAR_EXIT_FULLSCREEN = "Quitter le plein écran (F11)"
+TITLEBAR_CLOSE = "Fermer"
+
 # --- Navigation
 NAV_CHECKOUT = "Caisse"
 NAV_INVENTORY = "Stock"
@@ -67,6 +74,23 @@ PRICE_LEVEL_LABELS = {
     "gros": PRICE_GROS,
     "super_gros": PRICE_SUPER_GROS,
 }
+
+# --- Prix manuel (sélecteur de niveau de prix, caisse)
+PRICE_LEVEL_MANUAL = "Manuel"
+CHECKOUT_MANUAL_PRICE_TIP = "Prix saisi manuellement (au-dessus du plancher)."
+
+# --- Conditionnements (colisage) : caisse + fiche produit
+PACKAGING_UNIT = "Unité"
+CHECKOUT_COL_PACKAGING = "Conditionnement"
+PRODUCT_PACKAGINGS = "Conditionnements (optionnel)"
+PACKAGING_ADD = "Ajouter un conditionnement"
+PACKAGING_LABEL = "Nom (ex. Carton)"
+PACKAGING_UNIT_COUNT = "Unités par colis"
+PACKAGING_REMOVE = "Retirer"
+PACKAGING_HINT = (
+    "Chaque conditionnement a son propre prix et consomme N unités de stock."
+)
+CHECKOUT_BASE_UNITS = "{n} unités"
 
 # --- Caisse
 CHECKOUT_TITLE = "Caisse"
@@ -120,7 +144,6 @@ CUSTOMERS_SEARCH_PLACEHOLDER = "Rechercher par nom ou téléphone…"
 CUSTOMERS_NEW = "Nouveau client"
 CUSTOMERS_EMPTY = "Aucun client enregistré"
 CUSTOMERS_EMPTY_HINT = "Créez un client pour suivre ses achats et ses crédits."
-CUSTOMERS_NO_RESULT = "Aucun client ne correspond à la recherche."
 CUSTOMER_DIALOG_NEW = "Nouveau client"
 CUSTOMER_DIALOG_EDIT = "Modifier le client"
 CUSTOMER_NAME = "Nom complet"
@@ -133,7 +156,6 @@ CUSTOMER_STAT_BALANCE = "Crédit en cours"
 CUSTOMER_STAT_LAST = "Dernier achat"
 CUSTOMER_NEVER_PURCHASED = "Jamais"
 CUSTOMER_SALES_HISTORY = "Historique des ventes"
-CUSTOMER_UNPAID_SALES = "Ventes à crédit non soldées"
 CUSTOMER_SALE_PAID = "Payée"
 CUSTOMER_SALE_CREDIT = "Crédit"
 CUSTOMER_RECORD_PAYMENT = "Encaisser un paiement"
@@ -141,7 +163,6 @@ CUSTOMER_TOP_TITLE = "Meilleurs clients"
 CUSTOMER_TOP_HINT = (
     "Classement par chiffre d'affaires — sélectionnez un client pour le détail."
 )
-CUSTOMER_SELECT_HINT = "Sélectionnez un client dans la liste"
 CUSTOMER_COL_DATE = "Date"
 CUSTOMER_COL_TOTAL = "Total"
 CUSTOMER_COL_PAID = "Payé"
@@ -154,6 +175,9 @@ INVENTORY_NEW_PRODUCT = "Nouveau produit"
 INVENTORY_EDIT_PRODUCT = "Modifier"
 INVENTORY_ARCHIVE_PRODUCT = "Archiver"
 INVENTORY_ALL_CATEGORIES = "Toutes les catégories"
+INVENTORY_ALL_PRODUCTS = "Tous les produits"
+INVENTORY_CATEGORIES = "Catégories"
+INVENTORY_UNCATEGORIZED = "Sans catégorie"
 INVENTORY_COL_NAME = "Produit"
 INVENTORY_COL_BARCODE = "Code-barres"
 INVENTORY_COL_CATEGORY = "Catégorie"
@@ -257,7 +281,6 @@ STATS_ASSOCIATIONS_EMPTY_HINT = (
     "dans plusieurs ventes de la période."
 )
 STATS_PIN_REQUIRED = "Les statistiques nécessitent le code PIN propriétaire."
-STATS_EMPTY = "Aucune donnée sur la période"
 
 # --- Alertes
 ALERTS_TITLE = "Alertes"
@@ -297,3 +320,79 @@ SETTINGS_PREVIEW_REMAINING = "Reste à payer"
 SETTINGS_PREVIEW_CUSTOMER = "Client : Ali Benali"
 SETTINGS_PREVIEW_DEFAULT_FOOTER = "Merci de votre visite !"
 SETTINGS_PREVIEW_TICKET = "Ticket N° A1B2C3D4"
+
+# --- Zone dangereuse (réinitialisation totale)
+SETTINGS_DANGER_SECTION = "Zone dangereuse"
+SETTINGS_RESET_BUTTON = "Tout supprimer"
+SETTINGS_RESET_EXPLAIN = (
+    "Supprime définitivement toutes les données : produits, ventes, clients, "
+    "paiements, images et réglages. Action irréversible."
+)
+RESET_DIALOG_TITLE = "Tout supprimer"
+RESET_DIALOG_WARNING = (
+    "ATTENTION : cette action efface DÉFINITIVEMENT toutes les données de la "
+    "boutique — produits, stock, ventes, clients, paiements, images et "
+    "réglages. Elle ne peut pas être annulée."
+)
+RESET_DIALOG_PIN_PROMPT = "Saisissez le code PIN propriétaire pour confirmer :"
+RESET_DIALOG_CONFIRM = "Tout supprimer"
+RESET_DONE = (
+    "Toutes les données ont été supprimées. L'application va se fermer ; "
+    "relancez-la pour repartir de zéro."
+)
+
+# ============================================================================
+# Client attaché + vente anonyme + recherche intelligente
+# (Customer Attach + Guest Sale + Smart Search)
+# ----------------------------------------------------------------------------
+
+# --- Widget de recherche client (CustomerSearchBox, partagé)
+CUSTOMER_SEARCH_PLACEHOLDER = "Rechercher un client (nom ou téléphone)…"
+CUSTOMER_SEARCH_NO_RESULT = "Aucun client trouvé."
+CUSTOMER_SEARCH_CREATE = "Créer « {query} »…"
+CUSTOMER_ATTACH = "Attacher"
+CUSTOMER_DETACH = "Retirer le client"
+CUSTOMER_ANONYMOUS = "Anonyme"
+
+# --- Paiement partiel : attacher ou créer un client (nom + téléphone requis)
+# NB : le message d'exigence réutilise PAYMENT_CUSTOMER_REQUIRED (déjà défini).
+PAYMENT_PARTIAL_NEED_CUSTOMER = PAYMENT_CUSTOMER_REQUIRED
+PAYMENT_NEW_CUSTOMER_NAME = "Nom du client"
+PAYMENT_NEW_CUSTOMER_PHONE = "Téléphone"
+PAYMENT_ATTACH_EXISTING = "Client existant"
+PAYMENT_CREATE_NEW = "Nouveau client"
+
+# --- Écran Ventes (journal des ventes)
+NAV_SALES = "Ventes"
+SALES_TITLE = "Ventes"
+SALES_FILTER_TODAY = "Aujourd'hui"
+SALES_FILTER_WEEK = "7 jours"
+SALES_FILTER_MONTH = "30 jours"
+SALES_FILTER_ALL = "Tout"
+SALES_TYPE_ALL = "Toutes"
+SALES_TYPE_GUEST_PENDING = "Anonymes à résoudre"
+SALES_TYPE_GUEST_CONFIRMED = "Anonymes confirmées"
+SALES_TYPE_WITH_CUSTOMER = "Avec client"
+SALES_TYPE_CREDIT = "À crédit"
+SALES_COL_DATE = "Date"
+SALES_COL_CUSTOMER = "Client"
+SALES_COL_TOTAL = "Total"
+SALES_COL_PAID = "Payé"
+SALES_COL_BALANCE = "Reste"
+SALES_COL_STATUS = "Statut"
+SALES_STATUS_PAID = "Payée"
+SALES_STATUS_CREDIT = "Crédit"
+SALES_EMPTY = "Aucune vente sur cette période."
+SALES_GUEST_PENDING_BADGE = "À résoudre"
+SALES_GUEST_CONFIRMED_BADGE = "Anonyme"
+
+# --- Dialogue Détail de la vente (résolution du client)
+SALE_DETAIL_TITLE = "Détail de la vente"
+SALE_RESOLVE_SECTION = "Client de cette vente"
+SALE_LEAVE_ANONYMOUS = "Laisser anonyme"
+SALE_CREATE_CUSTOMER = "Créer un client"
+SALE_ATTACH_CUSTOMER = "Attacher un client existant"
+SALE_ASSIGNED_DONE = "Client attaché à la vente."
+SALE_LEFT_ANONYMOUS_DONE = "Vente marquée anonyme."
+SALE_ALREADY_HAS_CUSTOMER = "Cette vente a déjà un client attaché."
+SALE_REPRINT_RECEIPT = "Réimprimer le reçu"

@@ -1,10 +1,16 @@
+from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Query, Response
 
 from app.api.deps import DbDep
 from app.core.exceptions import NotFoundError
-from app.schemas.sale import CheckoutRequest, PaymentCreate, SaleRead
+from app.schemas.sale import (
+    AssignCustomerRequest,
+    CheckoutRequest,
+    PaymentCreate,
+    SaleRead,
+)
 from app.services import customers, payments, receipts, sales, stores
 from app.services import settings as settings_service
 
@@ -20,8 +26,26 @@ def checkout(payload: CheckoutRequest, db: DbDep):
 
 
 @router.get("", response_model=list[SaleRead])
-def list_sales(store_id: UUID, db: DbDep) -> list:
-    return sales.list_sales(db, store_id)
+def list_sales(
+    db: DbDep,
+    store_id: UUID,
+    customer_id: UUID | None = Query(None),
+    guest: str | None = Query(None, pattern="^(pending|confirmed|any)$"),
+    date_from: datetime | None = Query(None),
+    date_to: datetime | None = Query(None),
+    limit: int | None = Query(None, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+) -> list:
+    return sales.list_sales(
+        db,
+        store_id,
+        customer_id=customer_id,
+        guest=guest,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/{sale_id}", response_model=SaleRead)
@@ -40,6 +64,20 @@ def add_payment(sale_id: UUID, payload: PaymentCreate, db: DbDep):
     work; the whole operation is atomic."""
     payments.record_payment(db, sale_id, payload.amount)
     return sales.get_sale(db, sale_id)
+
+
+@router.post("/{sale_id}/customer", response_model=SaleRead)
+def assign_customer(sale_id: UUID, payload: AssignCustomerRequest, db: DbDep):
+    """Attach a client to a sale that has none. Rejected (409) if the sale
+    already carries a customer; assigning cancels any anonymous mark."""
+    return sales.assign_customer(db, sale_id, payload.customer_id)
+
+
+@router.post("/{sale_id}/confirm-guest", response_model=SaleRead)
+def confirm_guest(sale_id: UUID, db: DbDep):
+    """Mark a walk-in sale as intentionally anonymous. Idempotent; rejected
+    (409) if the sale already has a customer."""
+    return sales.confirm_guest(db, sale_id)
 
 
 @router.get("/{sale_id}/receipt")

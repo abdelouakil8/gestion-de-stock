@@ -41,8 +41,10 @@ Migrations: `a70e8f6fcbd9` (core tables), `b41c92d7e310` (stock ≥ 0 CHECK),
 dropped, customers/payments/store_settings created, paid_amount backfilled = total
 with one historical Payment row per sale, sale_items.price_level = 'detail').
 Upgrading a Phase-5 database in place is covered by `tests/test_migrations.py`.
-Packaged builds bootstrap a fresh schema via ORM metadata on first run; dev uses
-`alembic upgrade head`.
+**Migrations run automatically at every startup** (`app/db/migrate.py`, dev and
+packaged — the alembic scripts ship inside the exe): fresh databases are created
+at head, alembic-managed ones upgraded in place, and legacy create_all databases
+adopted (stamped, then upgraded). Nobody ever runs `alembic upgrade head` by hand.
 
 ### Enforced business rules (`backend/app/services/`)
 - **Named price levels** (`pricing.py`): each product carries price_detail /
@@ -98,6 +100,8 @@ Packaged builds bootstrap a fresh schema via ORM metadata on first run; dev uses
 - `GET /statistics/summary|top-products|overview|products/{id}|top-customers|customers/{id}|associations` (all owner/PIN)
 - `GET /alerts` (low stock + outstanding credits + badge counts)
 - `GET /settings`, `PUT /settings` (PIN)
+- `POST /admin/factory-reset` (PIN) — full wipe of business data + media;
+  the UI (Réglages > zone dangereuse) requires the PIN to be RE-TYPED.
 
 Errors: single envelope `{"error": {code, message, details}}` with French, user-safe
 messages; 404 not-found, 422 validation, 409 business rejections, 401 PIN, 500 logged.
@@ -147,12 +151,20 @@ statistics endpoint. Swapping to token auth later = replace one dependency body.
   `%LOCALAPPDATA%/GestionStockPOS/logs/crash.log`.
 - Receipts: 80mm ReportLab PDF (settings-aware since Phase 6), printed via the
   Windows `print` shell verb, temp-file path built only from the sale UUID.
-- Headless verification: `python scripts/ui_drive.py` — 23 assertions driving the real
+- Headless verification: `python scripts/ui_drive.py` — 26 assertions driving the real
   screens against the real API (checkout levels, credit rules, alerts refresh, image
-  upload, settings round-trip + live re-theme). Worker-thread audit repeated: zero
-  network calls on the UI thread (all through `run_api`).
+  upload, settings round-trip + live re-theme, F11 fullscreen toggle, factory reset
+  with wrong-then-right PIN). Worker-thread audit repeated: zero network calls on
+  the UI thread (all through `run_api`).
+- Stress harness: `python scripts/stress_test.py` — ~1100 concurrent operations
+  (16 threads): racing checkouts on scarce stock (zero oversell), racing payments on
+  one credit (never exceeds the total), hostile payloads, image uploads, reads under
+  load; every financial invariant re-checked row by row, zero unexpected errors.
+- Shell extras: title-bar buttons are always-visible icons (minimize / fullscreen /
+  maximize / close) with tooltips; F11 toggles true fullscreen; Réglages has a
+  danger zone ("Tout supprimer") that requires re-typing the owner PIN.
 
-### Tests (98, all passing — `pytest`)
+### Tests (103, all passing — `pytest`)
 | File | Covers |
 |---|---|
 | `backend/tests/test_smoke.py` | API liveness |
@@ -166,7 +178,8 @@ statistics endpoint. Swapping to token auth later = replace one dependency body.
 | `backend/tests/test_images.py` | upload/serve/replace/delete with file cleanup; bad type; spoofed magic bytes; oversize (413); path traversal impossible; PIN |
 | `backend/tests/test_api.py` | happy path over HTTP; hostile-client attempts (below floor, oversell, fake price level, credit without customer, overpay); PIN enforcement; cost_price never in cashier responses; cost_price required at creation; Swagger/openapi completeness |
 | `backend/tests/test_receipts.py` | 40-line receipts; long/accented names; non-Latin degradation; settings header/footer; credit paid/remaining block on/off |
-| `backend/tests/test_migrations.py` | `upgrade head` from scratch; Phase-5 DB upgraded in place with documented backfills; downgrade round-trip |
+| `backend/tests/test_migrations.py` | `upgrade head` from scratch; Phase-5 DB upgraded in place with documented backfills (incl. ids whose text differs from sa.Uuid rendering); downgrade round-trip |
+| `backend/tests/test_admin.py` | factory reset (PIN-gated, wipes every table + media); startup create-or-migrate: Phase-5 file upgraded in place, legacy create_all DB adopted (stamp), fresh file bootstrapped — all idempotent |
 
 Plus `docs/UI_CHECKLIST.md` — click-through checklist, verified by a headless functional
 drive of the real screens against the real API (tier reprice, checkout, oversell error
@@ -197,8 +210,9 @@ path, filters, dashboard).
 - Receipt printing uses the shell `print` verb — requires a PDF handler with a print verb
   (present on stock Windows 10/11); a direct-to-thermal ESC/POS path may be wanted later.
 - Arabic text on receipts degrades to `?` until a TTF font + text shaping is added (French is fine).
-- Packaged builds bootstrap fresh schemas via ORM metadata; a future release that alters
-  the schema must ship Alembic migrations and run them programmatically at startup.
+- Database migrations run PROGRAMMATICALLY at every startup (app/db/migrate.py):
+  fresh databases are created at head, alembic-managed ones are upgraded in place,
+  and legacy create_all databases are stamped then upgraded — dev and packaged.
 - A one-pass human visual click-through (window dragging feel, dialogs, printing on real
   hardware) is recommended; all logic paths are machine-verified in `docs/UI_CHECKLIST.md`.
 - Sales history has no UI screen yet (API exists: `GET /sales`).
@@ -219,7 +233,7 @@ path, filters, dashboard).
 2. Human visual pass over `docs/UI_CHECKLIST.md` on the packaged build.
 3. Commit the work (nothing has been committed; working tree contains the whole project).
 4. Sales-history screen (list + detail + reprint receipt) — API already serves it.
-5. Programmatic Alembic upgrades at packaged-app startup (needed before the first
+5. ~~Programmatic Alembic upgrades at startup~~ — DONE (app/db/migrate.py, tested incl. packaged
    schema-changing release).
 6. Arabic RTL update: QTranslator-based i18n (strings already centralized), Arabic TTF +
    shaping for receipts, `setLayoutDirection` (layouts already verified RTL-safe).

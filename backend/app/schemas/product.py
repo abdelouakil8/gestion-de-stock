@@ -5,6 +5,27 @@ from pydantic import BaseModel, Field
 from app.schemas.common import Money, ReadSchema
 
 
+class PackagingBase(BaseModel):
+    label: str = Field(min_length=1, max_length=80)
+    # Base stock units consumed per package (>= 1).
+    unit_count: int = Field(ge=1)
+    # Ordering rule (détail >= gros >= super gros) enforced in the service.
+    price_detail: Money
+    price_gros: Money
+    price_super_gros: Money
+    position: int = 0
+    is_active: bool = True
+
+
+class PackagingCreate(PackagingBase):
+    """Nested under a product create/update — no product_id here."""
+
+
+class PackagingRead(ReadSchema, PackagingBase):
+    product_id: UUID
+    store_id: UUID
+
+
 class ProductBase(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     barcode: str | None = Field(default=None, max_length=64)
@@ -24,6 +45,9 @@ class ProductCreate(ProductBase):
 
     store_id: UUID
     cost_price: Money
+    # Priced packagings created alongside the product. None or [] both start
+    # a product with no packagings.
+    packagings: list[PackagingCreate] | None = None
 
 
 class ProductUpdate(BaseModel):
@@ -37,6 +61,8 @@ class ProductUpdate(BaseModel):
     stock_quantity: int | None = Field(default=None, ge=0)
     low_stock_threshold: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
+    # None = leave packagings unchanged; [] = clear all; a list = replace.
+    packagings: list[PackagingCreate] | None = None
 
 
 class ProductRead(ReadSchema, ProductBase):
@@ -47,6 +73,7 @@ class ProductRead(ReadSchema, ProductBase):
 
     store_id: UUID
     image_path: str | None = None
+    packagings: list[PackagingRead] = []
 
 
 class ProductReadWithCost(ProductRead):

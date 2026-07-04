@@ -1,8 +1,9 @@
 import uuid
+from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, ForeignKey, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import BaseModel, StoreScopedMixin
@@ -23,6 +24,11 @@ class Sale(BaseModel, StoreScopedMixin):
     # a customer — the rule is enforced in the checkout service.
     customer_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("customers.id"), index=True, default=None
+    )
+    # Set when a walk-in (customer_id NULL) sale is intentionally kept
+    # anonymous — the operator's explicit "leave anonymous" choice.
+    guest_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
     )
     # Cache of SUM(payments.amount), recomputed transactionally by the
     # payments service on every write — the payments table is the single
@@ -62,6 +68,18 @@ class SaleItem(BaseModel, StoreScopedMixin):
     # "super_gros") — the server resolved unit_price_applied from it.
     price_level: Mapped[str] = mapped_column(
         String(16), nullable=False, default="detail"
+    )
+    # Optional priced packaging (carton) sold on this line. quantity keeps
+    # meaning "number of packages"; unit_count is the base stock units each
+    # package consumed (snapshot). base_units of the line = quantity *
+    # unit_count. packaging_label snapshots the label so receipts/history
+    # survive packaging edits/deletes.
+    packaging_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("product_packagings.id"), index=True, default=None
+    )
+    packaging_label: Mapped[str | None] = mapped_column(String(80), default=None)
+    unit_count: Mapped[int] = mapped_column(
+        nullable=False, default=1, server_default="1"
     )
     unit_price_applied: Mapped[Decimal] = mapped_column(Money, nullable=False)
     line_total: Mapped[Decimal] = mapped_column(Money, nullable=False)

@@ -123,6 +123,11 @@ QWidget {
     border-radius: $radius_md;
 }
 #RuleCard:hover { border-color: $primary; }
+#DangerZone {
+    background: $surface;
+    border: 1px solid $danger;
+    border-radius: $radius_lg;
+}
 
 /* ================================ Inputs ================================ */
 

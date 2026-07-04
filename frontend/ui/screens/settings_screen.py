@@ -34,23 +34,81 @@ from services.workers import run_api
 from ui import strings
 from ui.styles.tokens import ACCENT_PRESETS, NEUTRAL, SPACING, render_qss
 from ui.widgets.card import SectionCard
-from ui.widgets.modal import show_error
+from ui.widgets.modal import ModalDialog, show_error, show_info
 from ui.widgets.toast import show_toast
 
 
+class FactoryResetDialog(ModalDialog):
+    """Type-your-PIN confirmation for the full wipe. The typed PIN is sent
+    to the server, which is the only judge — no cached credential reuse."""
+
+    def __init__(self, api, parent=None) -> None:
+        super().__init__(strings.RESET_DIALOG_TITLE, parent)
+        self.api = api
+        # NB: never name this "done" — it would shadow QDialog.done(),
+        # which accept() invokes virtually (hard crash).
+        self.reset_done = False
+
+        warning = QLabel(strings.RESET_DIALOG_WARNING)
+        warning.setObjectName("FieldError")
+        warning.setWordWrap(True)
+        self.content.addWidget(warning)
+
+        self.content.addWidget(QLabel(strings.RESET_DIALOG_PIN_PROMPT))
+        self.pin_input = QLineEdit()
+        self.pin_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.pin_input.textChanged.connect(
+            lambda text: self.ok_button.setEnabled(bool(text.strip()))
+        )
+        self.content.addWidget(self.pin_input)
+
+        self.ok_button.setText(strings.RESET_DIALOG_CONFIRM)
+        self.ok_button.setObjectName("Danger")
+        self.ok_button.setEnabled(False)
+        self.pin_input.setFocus()
+
+    def accept(self) -> None:
+        pin = self.pin_input.text().strip()
+        if not pin:
+            return
+        self.ok_button.setEnabled(False)
+        run_api(
+            lambda: self.api.factory_reset(pin),
+            self._on_done,
+            self._on_error,
+        )
+
+    def _on_done(self, _result: object) -> None:
+        self.reset_done = True
+        super().accept()
+
+    def _on_error(self, err) -> None:
+        self.ok_button.setEnabled(True)
+        show_error(self, err.message)
+        self.pin_input.selectAll()
+        self.pin_input.setFocus()
+
+
 class ReceiptPreview(QFrame):
-    """Local mock of the printed receipt — same information layout."""
+    """Local mock of the printed receipt — same information layout.
+
+    Rendered as ONE monospace label rebuilt from scratch on every change:
+    no widget churn, so nothing can ever overlap or leak between renders.
+    """
+
+    COLS = 32  # characters per 80mm-style line
 
     def __init__(self, store_name: str, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("ReceiptPaper")
         self.store_name = store_name
-        self.setFixedWidth(260)
-        self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(
             SPACING["lg"], SPACING["lg"], SPACING["lg"], SPACING["lg"]
         )
-        self._layout.setSpacing(2)
+        self._label = QLabel("")
+        self._label.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self._label)
 
     def render_preview(
         self,
@@ -60,55 +118,37 @@ class ReceiptPreview(QFrame):
         footer: str,
         show_credit: bool,
     ) -> None:
-        while self._layout.count():
-            item = self._layout.takeAt(0)
-            if item.widget() is not None:
-                item.widget().deleteLater()
+        width = self.COLS
 
-        def line(text: str, *, bold=False, center=False, muted=False) -> None:
-            label = QLabel(text)
-            if center:
-                label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            style = []
-            if bold:
-                style.append("font-weight: 700;")
-            if muted:
-                style.append(f"color: {NEUTRAL['500']};")
-            if style:
-                label.setStyleSheet(" ".join(style))
-            label.setWordWrap(True)
-            self._layout.addWidget(label)
+        def fit(text: str) -> str:
+            return text if len(text) <= width else text[: width - 1] + "…"
 
-        def row(left: str, right: str, *, bold=False) -> None:
-            holder = QHBoxLayout()
-            left_label = QLabel(left)
-            right_label = QLabel(right)
-            if bold:
-                left_label.setStyleSheet("font-weight: 700;")
-                right_label.setStyleSheet("font-weight: 700;")
-            holder.addWidget(left_label)
-            holder.addStretch(1)
-            holder.addWidget(right_label)
-            self._layout.addLayout(holder)
+        def center(text: str) -> str:
+            return fit(text).center(width).rstrip()
 
-        line(shop_name or self.store_name, bold=True, center=True)
+        def row(left: str, right: str) -> str:
+            space = width - len(right)
+            return fit(left)[:space].ljust(space) + right
+
+        lines = [center(shop_name or self.store_name)]
         if phone:
-            line(f"Tél : {phone}", center=True, muted=True)
+            lines.append(center(f"Tél : {phone}"))
         if address:
-            line(address, center=True, muted=True)
-        line(datetime.now().strftime("Le %d/%m/%Y %H:%M"), center=True, muted=True)
-        line(strings.SETTINGS_PREVIEW_TICKET, center=True, muted=True)
-        line("-" * 32)
-        line(strings.SETTINGS_PREVIEW_SAMPLE_PRODUCT, bold=True)
-        row("  2 x 40.00", "80.00")
-        line("-" * 32)
-        row(strings.SETTINGS_PREVIEW_TOTAL, "80.00", bold=True)
+            lines.append(center(address))
+        lines.append(center(datetime.now().strftime("Le %d/%m/%Y %H:%M")))
+        lines.append(center(strings.SETTINGS_PREVIEW_TICKET))
+        lines.append("-" * width)
+        lines.append(fit(strings.SETTINGS_PREVIEW_SAMPLE_PRODUCT))
+        lines.append(row("  2 x 40.00", "80.00"))
+        lines.append("-" * width)
+        lines.append(row(strings.SETTINGS_PREVIEW_TOTAL, "80.00"))
         if show_credit:
-            line(strings.SETTINGS_PREVIEW_CUSTOMER)
-            row(strings.SETTINGS_PREVIEW_PAID, "30.00")
-            row(strings.SETTINGS_PREVIEW_REMAINING, "50.00", bold=True)
-        self._layout.addSpacing(SPACING["sm"])
-        line(footer or strings.SETTINGS_PREVIEW_DEFAULT_FOOTER, center=True)
+            lines.append(fit(strings.SETTINGS_PREVIEW_CUSTOMER))
+            lines.append(row(strings.SETTINGS_PREVIEW_PAID, "30.00"))
+            lines.append(row(strings.SETTINGS_PREVIEW_REMAINING, "50.00"))
+        lines.append("")
+        lines.append(center(footer or strings.SETTINGS_PREVIEW_DEFAULT_FOOTER))
+        self._label.setText("\n".join(lines))
 
 
 class SettingsScreen(QWidget):
@@ -207,6 +247,23 @@ class SettingsScreen(QWidget):
         swatch_row.addStretch(1)
         accent_card.body.addLayout(swatch_row)
         left.addWidget(accent_card)
+
+        # -------------------------------------------------- danger zone
+        danger_card = SectionCard(
+            strings.SETTINGS_DANGER_SECTION, "fa5s.exclamation-triangle"
+        )
+        danger_card.setObjectName("DangerZone")
+        danger_explain = QLabel(strings.SETTINGS_RESET_EXPLAIN)
+        danger_explain.setObjectName("Muted")
+        danger_explain.setWordWrap(True)
+        danger_card.body.addWidget(danger_explain)
+        reset_button = QPushButton(
+            qta.icon("fa5s.trash", color=NEUTRAL["600"]), strings.SETTINGS_RESET_BUTTON
+        )
+        reset_button.setObjectName("Danger")
+        reset_button.clicked.connect(self._factory_reset)
+        danger_card.body.addWidget(reset_button, alignment=Qt.AlignmentFlag.AlignLeft)
+        left.addWidget(danger_card)
         left.addStretch(1)
 
         body.addLayout(left, stretch=1)
@@ -311,3 +368,13 @@ class SettingsScreen(QWidget):
             show_error(self, strings.PIN_REQUIRED_ACTION)
         else:
             show_error(self, err.message)
+
+    # --------------------------------------------------------- danger zone
+
+    def _factory_reset(self) -> None:
+        dialog = FactoryResetDialog(self.api, parent=self)
+        if dialog.exec() and dialog.reset_done:
+            show_info(self, strings.RESET_DONE)
+            app = QApplication.instance()
+            if app is not None:
+                app.quit()
