@@ -271,11 +271,12 @@ class MainWindow(QMainWindow):
         body.addWidget(self.stack, stretch=1)
         root_layout.addLayout(body, stretch=1)
 
-        grip_row = QHBoxLayout()
-        grip_row.setContentsMargins(0, 0, 0, 0)
-        grip_row.addStretch(1)
-        grip_row.addWidget(QSizeGrip(root))
-        root_layout.addLayout(grip_row)
+        # Resize grip OVERLAYED in the end corner — a dedicated layout row
+        # would paint a full-width strip under the sidebar (white band bug).
+        self._size_grip = QSizeGrip(root)
+        self._size_grip.setFixedSize(16, 16)
+        self._size_grip.setStyleSheet("background: transparent;")
+        self._size_grip.raise_()
 
         self.setCentralWidget(root)
         self.navigate(self.checkout)
@@ -344,4 +345,16 @@ class MainWindow(QMainWindow):
         toast = getattr(self, "_active_toast", None)
         if toast is not None:
             toast.reposition()
+        # Keep the overlayed size grip pinned to the END corner (mirrors
+        # under RTL — computed from layoutDirection, no absolute side).
+        grip = getattr(self, "_size_grip", None)
+        if grip is not None and self.centralWidget() is not None:
+            area = self.centralWidget().rect()
+            if self.layoutDirection() == Qt.LayoutDirection.RightToLeft:
+                grip.move(area.left(), area.bottom() - grip.height() + 1)
+            else:
+                grip.move(
+                    area.right() - grip.width() + 1,
+                    area.bottom() - grip.height() + 1,
+                )
         super().resizeEvent(event)

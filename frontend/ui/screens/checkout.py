@@ -201,14 +201,24 @@ class CheckoutScreen(QWidget):
                 strings.CHECKOUT_COL_REMOVE,
             ]
         )
-        self.table.horizontalHeader().setDefaultSectionSize(110)
-        self.table.setColumnWidth(0, 240)
-        self.table.setColumnWidth(1, 140)
-        self.table.setColumnWidth(2, 340)  # 4-state level selector needs room
-        self.table.setColumnWidth(3, 120)
-        self.table.setColumnWidth(4, 90)
-        self.table.setColumnWidth(5, 120)
-        self.table.setColumnWidth(6, 44)
+        # Responsive: the product column absorbs all remaining width so the
+        # cart ALWAYS fits the viewport — no horizontal scrolling on any
+        # screen size or DPI scale (everything visible on one page).
+        from PySide6.QtWidgets import QHeaderView
+
+        header = self.table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for column, width in (
+            (1, 130),  # Conditionnement ("Carton (×24)")
+            (2, 300),  # 4-state level selector (Détail/Gros/Super gros/Manuel)
+            (3, 110),  # Prix unitaire
+            (4, 72),  # Qté
+            (5, 110),  # Total
+            (6, 40),  # remove
+        ):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
+            self.table.setColumnWidth(column, width)
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(THUMB_SIZES["cart"] + 12)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
