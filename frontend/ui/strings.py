@@ -8,7 +8,9 @@ live language switching (with an app restart).
 """
 
 from typing import Any
+
 from ui import i18n
+
 
 def __getattr__(name: str) -> Any:
     return getattr(i18n.current_strings, name)

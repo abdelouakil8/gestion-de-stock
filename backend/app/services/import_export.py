@@ -77,9 +77,7 @@ def _resolve_category(
     return cat.id
 
 
-def import_products_csv(
-    db: Session, store_id: UUID, file_bytes: bytes
-) -> ImportResult:
+def import_products_csv(db: Session, store_id: UUID, file_bytes: bytes) -> ImportResult:
     """Parse CSV and create/update products. Returns per-row results."""
     result = ImportResult()
     category_cache: dict[str, UUID] = {}
@@ -125,9 +123,7 @@ def import_products_csv(
                 else 0
             )
             threshold = (
-                _parse_int(
-                    row["low_stock_threshold"], "low_stock_threshold"
-                )
+                _parse_int(row["low_stock_threshold"], "low_stock_threshold")
                 if row.get("low_stock_threshold")
                 else 5
             )

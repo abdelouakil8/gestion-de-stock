@@ -208,7 +208,7 @@ class ProductDialog(ModalDialog):
         self.active_check.setChecked(True)
 
         form.addRow(strings.PRODUCT_NAME, self.name_input)
-        
+
         barcode_row = QHBoxLayout()
         barcode_row.setContentsMargins(0, 0, 0, 0)
         barcode_row.addWidget(self.barcode_input, stretch=1)
@@ -305,20 +305,23 @@ class ProductDialog(ModalDialog):
     def _print_label(self) -> None:
         if not self.details:
             return
-        from services import printing, label_printer
+        from services import label_printer, printing
+
         printer = printing.get_selected_printer()
-        
+
         product = dict(self.details)
         product["name"] = self.name_input.text()
         product["barcode"] = self.barcode_input.text()
         product["price_detail"] = self.detail_input.value()
-        
+
         try:
             label_printer.print_barcode_label(product, printer, copies=1)
             from ui.widgets.toast import show_toast
+
             show_toast(self, "Étiquette envoyée à l'imprimante.")
         except Exception as e:
             from ui.widgets.modal import show_error
+
             show_error(self, strings.ERROR_TITLE, f"Erreur d'impression : {e}")
 
     def _add_packaging_row(self, data: dict | None = None) -> None:
@@ -671,14 +674,18 @@ class InventoryScreen(QWidget):
             qta.icon("fa5s.arrow-down", color=NEUTRAL["600"]), "Réceptionner"
         )
         self.receive_button.clicked.connect(self._receive_stock)
-        
+
         # Error prevention: row-dependent actions stay disabled until a row
         # is selected instead of scolding with a dialog after the click.
         self.edit_button.setEnabled(False)
         self.archive_button.setEnabled(False)
         self.receive_button.setEnabled(False)
         for button in (
-            new_button, import_button, self.receive_button, self.edit_button, self.archive_button
+            new_button,
+            import_button,
+            self.receive_button,
+            self.edit_button,
+            self.archive_button,
         ):
             toolbar.addWidget(button)
         layout.addLayout(toolbar)
@@ -966,14 +973,16 @@ class InventoryScreen(QWidget):
             self,
             "Réceptionner",
             f"Quantité à ajouter pour {product['name']} :",
-            1, 1, 1000000
+            1,
+            1,
+            1000000,
         )
         if ok and qty > 0:
             # We fetch details first to get the full payload
             run_api(
                 lambda: self.api.get_product_details(product["id"]),
                 lambda details: self._do_receive_stock(details, qty),
-                lambda err: show_error(self, err.message)
+                lambda err: show_error(self, err.message),
             )
 
     def _do_receive_stock(self, details: dict, added_qty: int) -> None:
@@ -981,9 +990,9 @@ class InventoryScreen(QWidget):
         run_api(
             lambda: self.api.update_product(details["id"], details),
             lambda _: self._on_receive_done(added_qty, details["name"]),
-            lambda err: show_error(self, err.message)
+            lambda err: show_error(self, err.message),
         )
-        
+
     def _on_receive_done(self, qty: int, name: str) -> None:
         self.refresh()
         show_toast(self, f"{qty} unités ajoutées à {name}.")

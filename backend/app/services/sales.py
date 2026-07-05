@@ -182,12 +182,14 @@ def finalize_sale(db: Session, data: CheckoutRequest) -> Sale:
         # so paid_amount always equals SUM(payments) by construction.
         payment_method = data.payment.payment_method or "cash"
         if paid_amount > 0:
-            db.add(Payment(
-                store_id=data.store_id,
-                sale=sale,
-                amount=paid_amount,
-                payment_method=payment_method,
-            ))
+            db.add(
+                Payment(
+                    store_id=data.store_id,
+                    sale=sale,
+                    amount=paid_amount,
+                    payment_method=payment_method,
+                )
+            )
         db.commit()
     except Exception:
         db.rollback()
@@ -282,9 +284,7 @@ def list_sales(
         stmt = stmt.where(Sale.customer_id == customer_id)
 
     if guest == "pending":
-        stmt = stmt.where(
-            Sale.customer_id.is_(None), Sale.guest_confirmed_at.is_(None)
-        )
+        stmt = stmt.where(Sale.customer_id.is_(None), Sale.guest_confirmed_at.is_(None))
     elif guest == "confirmed":
         stmt = stmt.where(
             Sale.customer_id.is_(None), Sale.guest_confirmed_at.is_not(None)
@@ -312,9 +312,7 @@ def list_sales(
 def assign_customer(db: Session, sale_id: UUID, customer_id: UUID) -> Sale:
     """Attach a client to a sale that has none — the only path that ever sets
     customer_id after checkout. Assigning also cancels any anonymous mark."""
-    sale = db.scalar(
-        select(Sale).where(Sale.id == sale_id, Sale.deleted_at.is_(None))
-    )
+    sale = db.scalar(select(Sale).where(Sale.id == sale_id, Sale.deleted_at.is_(None)))
     if sale is None:
         raise NotFoundError("vente", sale_id)
     if sale.customer_id is not None:

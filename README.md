@@ -90,6 +90,20 @@ is created under `data/pos.db`. No secrets or paths are hardcoded.
 │   │   └── strings.py      # centralized user-facing strings (FR)
 │   └── main.py             # desktop entrypoint (boots the API, opens window)
 ├── .env.example
-├── requirements.txt        # runtime dependencies
+├── requirements.txt        # runtime dependencies (loose >=, for development)
+├── requirements.lock.txt   # fully pinned versions — use this for packaging
 └── requirements-dev.txt    # dev & packaging tools
 ```
+
+## Packaging
+
+For reproducible PyInstaller builds shipped to end users, install from the
+**pinned** lock file rather than the loose `requirements.txt`:
+
+```powershell
+pip install -r requirements.lock.txt -r requirements-dev.txt
+```
+
+`requirements.lock.txt` is generated from a clean install
+(`pip freeze`); regenerate it whenever `requirements.txt` changes so shipped
+binaries stay reproducible.

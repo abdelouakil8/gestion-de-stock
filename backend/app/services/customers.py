@@ -148,9 +148,7 @@ def customer_stats(db: Session, customer_id: UUID) -> CustomerStats | None:
                 func.coalesce(
                     func.sum(
                         SaleItem.line_total
-                        - Product.cost_price
-                        * SaleItem.quantity
-                        * SaleItem.unit_count
+                        - Product.cost_price * SaleItem.quantity * SaleItem.unit_count
                     ),
                     0,
                 ),

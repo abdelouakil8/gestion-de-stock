@@ -193,9 +193,7 @@ def test_assign_soft_deleted_customer_is_404(client):
     customer = make_customer(client, store_id)
     sale = guest_sale(client, store_id, product["id"])
 
-    archived = client.delete(
-        f"/api/v1/customers/{customer['id']}", headers=PIN_HEADER
-    )
+    archived = client.delete(f"/api/v1/customers/{customer['id']}", headers=PIN_HEADER)
     assert archived.status_code == 204
 
     resp = client.post(

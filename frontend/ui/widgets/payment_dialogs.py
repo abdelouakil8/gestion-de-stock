@@ -377,9 +377,7 @@ class RecordPaymentDialog(ModalDialog):
             return
         self.ok_button.setEnabled(False)
         run_api(
-            lambda: self.api.record_payment(
-                self.sale["id"], f"{amount:.2f}", "cash"
-            ),
+            lambda: self.api.record_payment(self.sale["id"], f"{amount:.2f}", "cash"),
             self._on_done,
             self._on_error,
         )

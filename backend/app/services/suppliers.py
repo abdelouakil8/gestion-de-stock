@@ -26,9 +26,7 @@ def create_supplier(db: Session, data: SupplierCreate) -> Supplier:
     return supplier
 
 
-def update_supplier(
-    db: Session, supplier_id: UUID, data: SupplierUpdate
-) -> Supplier:
+def update_supplier(db: Session, supplier_id: UUID, data: SupplierUpdate) -> Supplier:
     supplier = db.scalar(
         select(Supplier).where(
             Supplier.id == supplier_id, Supplier.deleted_at.is_(None)
@@ -41,9 +39,7 @@ def update_supplier(
     updates = data.model_dump(exclude_unset=True)
     for key, value in updates.items():
         setattr(supplier, key, value)
-    supplier.search_text = normalize_text(
-        f"{supplier.name} {supplier.phone}"
-    )
+    supplier.search_text = normalize_text(f"{supplier.name} {supplier.phone}")
     db.commit()
     db.refresh(supplier)
     return supplier

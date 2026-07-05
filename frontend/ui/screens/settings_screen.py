@@ -185,7 +185,9 @@ class ReceiptPreview(QFrame):
             space = width - len(right)
             if current_language == "ar":
                 # In Arabic, the visual left is the logical right.
-                return fit(right).ljust(len(right) + 1) + fit(left).rjust(width - len(right) - 1)
+                return fit(right).ljust(len(right) + 1) + fit(left).rjust(
+                    width - len(right) - 1
+                )
             return fit(left)[:space].ljust(space) + right
 
         lines = [center(shop_name or self.store_name)]
@@ -294,7 +296,7 @@ class SettingsScreen(QWidget):
             self.printer_combo.setCurrentIndex(max(index, 0))
         self.printer_combo.currentIndexChanged.connect(self._on_printer_changed)
         printer_card.body.addWidget(self.printer_combo)
-        
+
         self.escpos_check = QCheckBox(strings.SETTINGS_PRINTER_ESCPOS)
         self.escpos_check.toggled.connect(self._on_escpos_toggled)
         printer_card.body.addWidget(self.escpos_check)
@@ -307,7 +309,8 @@ class SettingsScreen(QWidget):
         btn_row.addWidget(test_print)
 
         self.drawer_btn = QPushButton(
-            qta.icon("fa5s.box-open", color=NEUTRAL["600"]), strings.SETTINGS_PRINTER_DRAWER
+            qta.icon("fa5s.box-open", color=NEUTRAL["600"]),
+            strings.SETTINGS_PRINTER_DRAWER,
         )
         self.drawer_btn.clicked.connect(self._kick_drawer)
         btn_row.addWidget(self.drawer_btn)
@@ -337,13 +340,17 @@ class SettingsScreen(QWidget):
         backup_row.addStretch(1)
         backup_card.body.addLayout(backup_row)
         left.addWidget(backup_card)
-        
+
         # ------------------------------------------------------ tour
         tour_card = SectionCard(strings.FEATURE_TOUR_TITLE, "fa5s.info-circle")
-        tour_hint = QLabel("Redécouvrez les fonctionnalités principales de l'application.")
+        tour_hint = QLabel(
+            "Redécouvrez les fonctionnalités principales de l'application."
+        )
         tour_hint.setObjectName("FieldHint")
         tour_card.body.addWidget(tour_hint)
-        tour_btn = QPushButton(qta.icon("fa5s.play", color=NEUTRAL["600"]), "Démarrer la visite")
+        tour_btn = QPushButton(
+            qta.icon("fa5s.play", color=NEUTRAL["600"]), "Démarrer la visite"
+        )
         tour_btn.clicked.connect(self._start_tour)
         tour_card.body.addWidget(tour_btn, alignment=Qt.AlignmentFlag.AlignLeft)
         left.addWidget(tour_card)
@@ -457,7 +464,7 @@ class SettingsScreen(QWidget):
                 self._swatch_group.setExclusive(True)
 
     # ---------------------------------------------------------- actions
-    
+
     def _start_tour(self) -> None:
         from ui.screens.feature_tour import FeatureTour
 
@@ -478,6 +485,7 @@ class SettingsScreen(QWidget):
     def _refresh_printer_ui(self) -> None:
         name = self.printer_combo.currentData()
         from services import escpos_printer
+
         if name:
             self.escpos_check.setEnabled(True)
             self.escpos_check.blockSignals(True)
@@ -493,6 +501,7 @@ class SettingsScreen(QWidget):
         name = self.printer_combo.currentData()
         if name:
             from services import escpos_printer
+
             escpos_printer.set_escpos_enabled(name, checked)
             self.drawer_btn.setEnabled(checked)
 
@@ -500,6 +509,7 @@ class SettingsScreen(QWidget):
         name = self.printer_combo.currentData()
         if name:
             from services import escpos_printer
+
             escpos_printer.kick_drawer(name)
 
     def _test_print(self) -> None:
@@ -540,24 +550,26 @@ class SettingsScreen(QWidget):
         old_lang = self.settings.get("ui_language", "fr")
         self.settings = dict(settings)
         new_lang = self.settings.get("ui_language", "fr")
-        
+
         # Re-theme live from the saved accent — no restart needed.
         accent = self.settings.get("theme_accent")
         app = QApplication.instance()
         if app is not None and accent:
             tokens.CURRENT_ACCENT = accent
             app.setStyleSheet(render_qss())
-            
+
         if old_lang != new_lang:
             from ui.i18n import apply_language
+
             apply_language(new_lang)
-            
+
             main_win = self.window()
             if main_win:
                 from ui.screens.main_window import MainWindow
+
                 new_window = MainWindow(self.api, main_win.store)
                 new_window.navigate(new_window.settings_screen)
-                
+
                 app._main_window = new_window  # Keep reference to prevent GC
                 new_window.show()
                 main_win.close()

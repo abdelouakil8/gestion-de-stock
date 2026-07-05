@@ -343,9 +343,7 @@ def downgrade() -> None:
 
     # Restore min_sale_price from the floor, then drop the named prices.
     with op.batch_alter_table("products", schema=None) as batch_op:
-        batch_op.add_column(
-            sa.Column("min_sale_price", sa.BigInteger(), nullable=True)
-        )
+        batch_op.add_column(sa.Column("min_sale_price", sa.BigInteger(), nullable=True))
     products_t = sa.table(
         "products",
         sa.column("min_sale_price", sa.BigInteger()),

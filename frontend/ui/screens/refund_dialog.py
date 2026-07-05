@@ -159,17 +159,21 @@ class RefundDialog(ModalDialog):
             total += row.subtotal
             if row.quantity > 0:
                 any_selected = True
-        self._total_label.setText(strings.REFUND_TOTAL.format(amount=fmt.fmt_money(total)))
+        self._total_label.setText(
+            strings.REFUND_TOTAL.format(amount=fmt.fmt_money(total))
+        )
         self.ok_button.setEnabled(any_selected)
 
     def accept(self) -> None:
         items = []
         for row in self._rows:
             if row.quantity > 0:
-                items.append({
-                    "sale_item_id": row.item["sale_item_id"],
-                    "quantity": row.quantity,
-                })
+                items.append(
+                    {
+                        "sale_item_id": row.item["sale_item_id"],
+                        "quantity": row.quantity,
+                    }
+                )
         if not items:
             return
         self.ok_button.setEnabled(False)

@@ -11,13 +11,12 @@ shaping; the API surface (bytes in → bytes out) will not change.
 
 from decimal import Decimal
 from io import BytesIO
+from pathlib import Path
 
 from reportlab.lib.units import mm
-from reportlab.pdfgen import canvas
-
-from pathlib import Path
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen import canvas
 
 from app.models import Customer, Sale, Store, StoreSettings
 from app.models.refund import Refund
@@ -32,17 +31,18 @@ _DEFAULT_FOOTER = "Merci de votre visite !"
 FONT_DIR = Path(__file__).resolve().parents[1] / "assets" / "fonts"
 pdfmetrics.registerFont(TTFont("Amiri", str(FONT_DIR / "Amiri-Regular.ttf")))
 
+
 def _shape_arabic(text: str) -> str:
     """Shape and reorder Arabic text for ReportLab rendering."""
     try:
         import arabic_reshaper
         from bidi.algorithm import get_display
-        
+
         # Configure reshaper to handle ligatures correctly
         configuration = {
-            'delete_harakat': False,
-            'shift_harakat_position': False,
-            'use_unshaped_instead_of_isolated': False
+            "delete_harakat": False,
+            "shift_harakat_position": False,
+            "use_unshaped_instead_of_isolated": False,
         }
         reshaper = arabic_reshaper.ArabicReshaper(configuration=configuration)
         reshaped = reshaper.reshape(text)
@@ -101,16 +101,18 @@ def build_receipt_pdf(
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=(_WIDTH, height))
     y = height - _MARGIN
-    
+
     is_arabic = bool(settings and settings.ui_language == "ar")
     default_font = "Amiri" if is_arabic else "Helvetica"
     bold_font = "Amiri" if is_arabic else "Helvetica-Bold"
 
     def line(text: str, font: str = default_font, size: int = 9, center: bool = False):
         nonlocal y
-        if font == "Helvetica" and is_arabic: font = default_font
-        if font == "Helvetica-Bold" and is_arabic: font = bold_font
-        
+        if font == "Helvetica" and is_arabic:
+            font = default_font
+        if font == "Helvetica-Bold" and is_arabic:
+            font = bold_font
+
         pdf.setFont(font, size)
         safe_txt = _safe(text, is_arabic)
         if center:
@@ -124,14 +126,17 @@ def build_receipt_pdf(
 
     def line_right(left: str, right: str, font: str = default_font, size: int = 9):
         nonlocal y
-        if font == "Helvetica" and is_arabic: font = default_font
-        if font == "Helvetica-Bold" and is_arabic: font = bold_font
-        
+        if font == "Helvetica" and is_arabic:
+            font = default_font
+        if font == "Helvetica-Bold" and is_arabic:
+            font = bold_font
+
         pdf.setFont(font, size)
         safe_left = _safe(left, is_arabic)
         safe_right = _safe(right, is_arabic)
         if is_arabic:
-            # Flip positions: left string goes to right margin, right string goes to left margin
+            # Flip positions: the left string goes to the right margin and
+            # the right string goes to the left margin.
             pdf.drawString(_MARGIN, y, safe_right)
             pdf.drawRightString(_WIDTH - _MARGIN, y, safe_left)
         else:
@@ -231,9 +236,11 @@ def build_refund_receipt_pdf(
 
     def line(text: str, font: str = default_font, size: int = 9, center: bool = False):
         nonlocal y
-        if font == "Helvetica" and is_arabic: font = default_font
-        if font == "Helvetica-Bold" and is_arabic: font = bold_font
-        
+        if font == "Helvetica" and is_arabic:
+            font = default_font
+        if font == "Helvetica-Bold" and is_arabic:
+            font = bold_font
+
         pdf.setFont(font, size)
         safe_txt = _safe(text, is_arabic)
         if center:
@@ -247,9 +254,11 @@ def build_refund_receipt_pdf(
 
     def line_right(left: str, right: str, font: str = default_font, size: int = 9):
         nonlocal y
-        if font == "Helvetica" and is_arabic: font = default_font
-        if font == "Helvetica-Bold" and is_arabic: font = bold_font
-        
+        if font == "Helvetica" and is_arabic:
+            font = default_font
+        if font == "Helvetica-Bold" and is_arabic:
+            font = bold_font
+
         pdf.setFont(font, size)
         safe_left = _safe(left, is_arabic)
         safe_right = _safe(right, is_arabic)

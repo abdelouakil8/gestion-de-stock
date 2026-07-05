@@ -6,12 +6,13 @@ the entire media/ tree (product images). Restoring always creates a safety
 backup of the current state first, so even a bad restore is reversible.
 """
 
+import ntpath
 import shutil
 import sqlite3
 import tempfile
 import zipfile
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from loguru import logger
 
@@ -73,6 +74,9 @@ def create_backup(target_dir: Path | None = None) -> Path:
         shutil.rmtree(tmp_path, ignore_errors=True)
 
     logger.info("Backup created | path={} size={}", zip_path, zip_path.stat().st_size)
+    # Retention: prune the oldest backups in this directory so they don't grow
+    # without bound on the merchant's disk.
+    cleanup_old_backups(backup_dir=target_dir)
     return zip_path
 
 
@@ -84,6 +88,36 @@ def validate_backup(zip_path: Path) -> bool:
             return _BACKUP_DB_NAME in names
     except (zipfile.BadZipFile, OSError):
         return False
+
+
+def _reject_unsafe_entries(zf: zipfile.ZipFile, dest: Path) -> None:
+    """Guard against Zip Slip / path traversal before extraction.
+
+    A tampered backup ZIP could carry entries like ``../../evil`` or an
+    absolute path that, once extracted, would clobber files anywhere on disk.
+    We accept ONLY the expected payload — the top-level ``pos.db`` and files
+    under ``media/`` — and reject the entire restore (raising ``ValueError``)
+    before a single byte is written.
+    """
+    dest_resolved = dest.resolve()
+    for info in zf.infolist():
+        name = info.filename
+        norm = name.replace("\\", "/")
+        parts = PurePosixPath(norm).parts
+        # Absolute path (POSIX or Windows-drive) or parent-dir traversal.
+        if norm.startswith("/") or ntpath.isabs(name) or ".." in parts:
+            raise ValueError(f"Archive rejetée — entrée de chemin non sûre : {name!r}")
+        # Whitelist the expected backup payload only.
+        is_db = norm == _BACKUP_DB_NAME
+        is_media = norm == _BACKUP_MEDIA_DIR or norm.startswith(f"{_BACKUP_MEDIA_DIR}/")
+        if not (is_db or is_media):
+            raise ValueError(f"Archive rejetée — entrée inattendue : {name!r}")
+        # Belt-and-suspenders: the resolved target must stay inside dest.
+        target = (dest_resolved / norm).resolve()
+        if target != dest_resolved and dest_resolved not in target.parents:
+            raise ValueError(
+                f"Archive rejetée — chemin hors du dossier cible : {name!r}"
+            )
 
 
 def restore_backup(zip_path: Path) -> Path:
@@ -110,6 +144,8 @@ def restore_backup(zip_path: Path) -> Path:
     with zipfile.ZipFile(zip_path, "r") as zf:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
+            # Validate every entry BEFORE extracting anything (Zip Slip guard).
+            _reject_unsafe_entries(zf, tmp_path)
             zf.extractall(tmp_path)
 
             # Replace database.
@@ -137,14 +173,16 @@ def list_backups(backup_dir: Path | None = None) -> list[dict]:
         return []
     backups = []
     for f in sorted(backup_dir.glob("backup_*.zip"), reverse=True):
-        backups.append({
-            "filename": f.name,
-            "path": str(f),
-            "size_bytes": f.stat().st_size,
-            "created_at": datetime.fromtimestamp(
-                f.stat().st_mtime, tz=UTC
-            ).isoformat(),
-        })
+        backups.append(
+            {
+                "filename": f.name,
+                "path": str(f),
+                "size_bytes": f.stat().st_size,
+                "created_at": datetime.fromtimestamp(
+                    f.stat().st_mtime, tz=UTC
+                ).isoformat(),
+            }
+        )
     return backups
 
 

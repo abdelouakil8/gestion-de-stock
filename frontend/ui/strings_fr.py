@@ -40,14 +40,20 @@ UNEXPECTED_ERROR = "Une erreur inattendue est survenue. Veuillez réessayer."
 
 # --- Licence et Mise à jour
 LICENSE_ERROR_TITLE = "Erreur de licence"
-LICENSE_MISSING = "Fichier de licence introuvable. Veuillez placer le fichier license.lic dans le dossier de l'application."
+LICENSE_MISSING = (
+    "Fichier de licence introuvable. Veuillez placer le fichier "
+    "license.lic dans le dossier de l'application."
+)
 UPDATE_AVAILABLE = "Une nouvelle version ({version}) est disponible !"
 UPDATE_AVAILABLE_HINT = "Téléchargez-la depuis : {url}"
 
 # --- Connexion / PIN
 ONBOARDING_TITLE = "Bienvenue dans Gestion Stock POS"
 ONBOARDING_WELCOME = "Première configuration"
-ONBOARDING_DESC = "Veuillez définir un code PIN (mot de passe) pour protéger l'accès à votre caisse. Ce code sera demandé à chaque démarrage."
+ONBOARDING_DESC = (
+    "Veuillez définir un code PIN (mot de passe) pour protéger l'accès à "
+    "votre caisse. Ce code sera demandé à chaque démarrage."
+)
 ONBOARDING_PIN_PROMPT = "Définir le code PIN :"
 ONBOARDING_PIN_CONFIRM = "Confirmer le code PIN"
 ONBOARDING_SUBMIT = "Commencer"
@@ -58,28 +64,62 @@ ONBOARDING_ERR_MISMATCH = "Les deux codes PIN ne correspondent pas."
 FEATURE_TOUR_TITLE = "Découvrir l'application"
 FEATURE_TOUR_WELCOME = "Bienvenue sur Gestion Stock POS !"
 FEATURE_TOUR_CHECKOUT_TITLE = "Caisse (Point de vente)"
-FEATURE_TOUR_CHECKOUT_DESC = "Réalisez vos ventes rapidement. Recherchez par code-barres ou par nom, appliquez des remises, encaissez en espèces ou par carte."
+FEATURE_TOUR_CHECKOUT_DESC = (
+    "Réalisez vos ventes rapidement. Recherchez par code-barres ou par "
+    "nom, appliquez des remises, encaissez en espèces ou par carte."
+)
 FEATURE_TOUR_INVENTORY_TITLE = "Inventaire"
-FEATURE_TOUR_INVENTORY_DESC = "Gérez vos produits, prix de gros et détail, et surveillez les niveaux de stock."
+FEATURE_TOUR_INVENTORY_DESC = (
+    "Gérez vos produits, prix de gros et détail, et surveillez les niveaux de stock."
+)
 FEATURE_TOUR_STATS_TITLE = "Statistiques et Rapports"
-FEATURE_TOUR_STATS_DESC = "Suivez votre chiffre d'affaires, vos meilleures ventes et exportez des rapports (PDF, Excel) pour votre comptabilité."
+FEATURE_TOUR_STATS_DESC = (
+    "Suivez votre chiffre d'affaires, vos meilleures ventes et exportez "
+    "des rapports (PDF, Excel) pour votre comptabilité."
+)
 FEATURE_TOUR_ALERTS_TITLE = "Alertes et Crédits"
-FEATURE_TOUR_ALERTS_DESC = "Soyez notifié des stocks faibles et suivez les crédits clients en attente de paiement."
+FEATURE_TOUR_ALERTS_DESC = (
+    "Soyez notifié des stocks faibles et suivez les crédits clients en "
+    "attente de paiement."
+)
 FEATURE_TOUR_PRINT_TITLE = "Impression et Étiquettes"
-FEATURE_TOUR_PRINT_DESC = "Imprimez des tickets de caisse sur votre imprimante thermique (ESC/POS) et créez des étiquettes codes-barres pour vos articles."
+FEATURE_TOUR_PRINT_DESC = (
+    "Imprimez des tickets de caisse sur votre imprimante thermique "
+    "(ESC/POS) et créez des étiquettes codes-barres pour vos articles."
+)
 # --- Visite guidée interactive (coach marks)
-FEATURE_TOUR_WELCOME_DESC = "Faisons un tour rapide et interactif de l'application. Nous allons parcourir chaque écran ensemble."
-FEATURE_TOUR_NAV_CAISSE_DESC = "Votre écran de vente. C'est ici que vous scannez, ajoutez au panier et encaissez au quotidien."
+FEATURE_TOUR_WELCOME_DESC = (
+    "Faisons un tour rapide et interactif de l'application. Nous allons "
+    "parcourir chaque écran ensemble."
+)
+FEATURE_TOUR_NAV_CAISSE_DESC = (
+    "Votre écran de vente. C'est ici que vous scannez, ajoutez au panier "
+    "et encaissez au quotidien."
+)
 FEATURE_TOUR_SEARCH_TITLE = "Ajouter des produits"
-FEATURE_TOUR_SEARCH_DESC = "Scannez un code-barres ou tapez un nom, puis Entrée pour ajouter l'article au panier."
+FEATURE_TOUR_SEARCH_DESC = (
+    "Scannez un code-barres ou tapez un nom, puis Entrée pour ajouter "
+    "l'article au panier."
+)
 FEATURE_TOUR_PAY_TITLE = "Encaisser (F12)"
-FEATURE_TOUR_PAY_DESC = "Terminez la vente : paiement complet, ou partiel (crédit) rattaché à un client. F12 ouvre l'encaissement."
+FEATURE_TOUR_PAY_DESC = (
+    "Terminez la vente : paiement complet, ou partiel (crédit) rattaché à "
+    "un client. F12 ouvre l'encaissement."
+)
 FEATURE_TOUR_CUSTOMERS_TITLE = "Clients"
-FEATURE_TOUR_CUSTOMERS_DESC = "Gérez votre fichier clients, leurs achats et leurs crédits en cours."
+FEATURE_TOUR_CUSTOMERS_DESC = (
+    "Gérez votre fichier clients, leurs achats et leurs crédits en cours."
+)
 FEATURE_TOUR_SETTINGS_TITLE = "Réglages"
-FEATURE_TOUR_SETTINGS_DESC = "Personnalisez le reçu, l'imprimante, la langue, l'accent de couleur, et sauvegardez vos données."
+FEATURE_TOUR_SETTINGS_DESC = (
+    "Personnalisez le reçu, l'imprimante, la langue, l'accent de couleur, "
+    "et sauvegardez vos données."
+)
 FEATURE_TOUR_DONE_TITLE = "Vous êtes prêt !"
-FEATURE_TOUR_DONE_DESC = "C'est tout ! Vous pouvez relancer cette visite à tout moment depuis les Réglages. Bonne vente."
+FEATURE_TOUR_DONE_DESC = (
+    "C'est tout ! Vous pouvez relancer cette visite à tout moment depuis "
+    "les Réglages. Bonne vente."
+)
 FEATURE_TOUR_NEXT = "Suivant"
 FEATURE_TOUR_PREV = "Précédent"
 FEATURE_TOUR_SKIP = "Passer"
@@ -387,7 +427,10 @@ SETTINGS_PRINTER_TEST_SENT = "Page de test envoyée à l'imprimante."
 SETTINGS_ACCENT_SECTION = "Couleur d'accentuation"
 SETTINGS_ACCENT_CUSTOM = "Personnalisée…"
 SETTINGS_SAVED_TOAST = "Réglages enregistrés avec succès."
-SETTINGS_RESTART_REQUIRED = "La langue de l'interface a été modifiée. Veuillez redémarrer l'application pour appliquer ce changement à tous les écrans."
+SETTINGS_RESTART_REQUIRED = (
+    "La langue de l'interface a été modifiée. Veuillez redémarrer "
+    "l'application pour appliquer ce changement à tous les écrans."
+)
 SETTINGS_PREVIEW_SAMPLE_PRODUCT = "Exemple de produit"
 SETTINGS_PREVIEW_TOTAL = "TOTAL"
 SETTINGS_PREVIEW_PAID = "Payé"

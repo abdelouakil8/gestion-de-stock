@@ -12,8 +12,12 @@ __pycache__/
 # Local data & secrets
 *.db
 data/
+media/
 logs/
 .env
+# License signing keys and issued licenses — NEVER commit these.
+*.pem
+license.lic
 
 # Build outputs
 dist/

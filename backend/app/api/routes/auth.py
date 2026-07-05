@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.core.config import settings
-from app.core.security import verify_pin
+from app.core.config import RUNTIME_DIR, settings
+from app.core.security import hash_pin, verify_pin
 
 router = APIRouter()
 
@@ -53,22 +53,22 @@ def set_pin(payload: PinSetRequest) -> PinVerifyResponse:
     if settings.pin_hash is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "pin_already_configured", "message": "Le code PIN est déjà configuré."},
+            detail={
+                "code": "pin_already_configured",
+                "message": "Le code PIN est déjà configuré.",
+            },
         )
-        
-    from app.core.security import get_password_hash
-    from app.core.config import RUNTIME_DIR
-    
-    hashed = get_password_hash(payload.pin)
-    
+
+    hashed = hash_pin(payload.pin)
+
     env_file = RUNTIME_DIR / ".env"
     lines = []
     if env_file.exists():
         lines = env_file.read_text("utf-8").splitlines()
-        
+
     lines = [line for line in lines if not line.startswith("PIN_HASH=")]
     lines.append(f"PIN_HASH={hashed}")
     env_file.write_text("\n".join(lines) + "\n", "utf-8")
-    
+
     settings.pin_hash = hashed
     return PinVerifyResponse(valid=True)

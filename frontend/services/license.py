@@ -4,7 +4,7 @@ import base64
 import json
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from loguru import logger
@@ -18,13 +18,13 @@ except ImportError:
     InvalidSignature = None
 
 _PUBLIC_KEY_PEM = b"""-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsCLTtTIOwkbdAhfoQXoM
-5CtUXHGUUCA2vxi7GB+WWkgOg7GxUg/gQ7gp0J3e2ZljvmQh5f6rlgfUag0exhzU
-zRuqcUHnrXUNka/t8CAYXYzU/GXNNHzS1eyQr9VEQJjMhegIHgaaKROMYenNnYtS
-2oydLEqcktZ6qhBXboAqi8gMpE1LREsOuNtblsT2vUQLImQdosRCKhRu8Xlo138x
-kHMLXqYlMDlKg2U8ZSXwoOyuj2nvN6pcgWhz2KbXP3jxhuqIdZcHbUCPn9UICStT
-2t+l89ogY472M/ykKqc8X+COIBup8UbMsnYaJW47+O3W5aSAdKm144Y61ePOkcIw
-QwIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsidn0xespr+bfijuEBR0
+yShW/bcg84E05OTXO3+cDpsS/qnQCMgmN9B0gAEBEPLiLg0zdzUplV/99Gb0Inj/
+hDDCqDyNiIy1RLepmPO1ws9nLB94EuwplE7cKUFv+kqokCIfbMyM8626UX+NQYUT
+TDGImQ/jnJCoLPyVsO1EY4qXpHFD4iDPvzvMPo447+8acIVpS123r6kXUhr+IWld
+lZyMR6SBw52WY+zguWOWDbVRJ6PoEPrQz3Uvx1Xcx10SH5X7SnyNGjCCurTO5r3f
+mHrZ80BekGrN6UUJvhoET/2qBBpJPxwU5G/WfjycTEgU67Lu2DnQidTqoUeYzOFB
+HQIDAQAB
 -----END PUBLIC KEY-----"""
 
 
@@ -37,7 +37,7 @@ class LicenseInfo:
 
     @property
     def is_expired(self) -> bool:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expires = self.expires_at
         if expires.tzinfo is None:
             now = now.replace(tzinfo=None)
@@ -51,29 +51,32 @@ def find_license() -> Path | None:
         path = root / name
         if path.is_file():
             return path
-    
+
     # Also look in the current working directory as fallback
     cwd = Path.cwd()
     for name in ("license.lic", "license.json"):
         path = cwd / name
         if path.is_file():
             return path
-            
+
     return None
 
 
 def verify_license(license_path: Path) -> LicenseInfo | None:
     """Read and verify the license. Returns LicenseInfo or raises ValueError."""
     if not InvalidSignature:
-        logger.warning("cryptography package missing, skipping strict license signature check.")
-        # We can fallback to just parsing it, but for a real app we'd block.
-        # But instructions say "optional import, graceful if missing", wait, it says "graceful if missing".
-        # We will parse but not verify signature if cryptography is missing.
+        logger.warning(
+            "cryptography package missing, skipping strict license signature check."
+        )
+        # Graceful degradation: without `cryptography` we cannot verify the RSA
+        # signature, so the license is still parsed and its expiry enforced, but
+        # authenticity is NOT checked. The packaged build always bundles
+        # `cryptography`, so this branch is only reached in stripped dev setups.
 
     try:
         data = json.loads(license_path.read_text("utf-8"))
     except Exception as e:
-        raise ValueError(f"Fichier de licence invalide ou corrompu ({e}).")
+        raise ValueError(f"Fichier de licence invalide ou corrompu ({e}).") from e
 
     signature_b64 = data.get("signature")
     if not signature_b64:
@@ -86,7 +89,9 @@ def verify_license(license_path: Path) -> LicenseInfo | None:
         "issued_at": data.get("issued_at"),
         "expires_at": data.get("expires_at"),
     }
-    payload_bytes = json.dumps(payload, separators=(',', ':'), sort_keys=True).encode("utf-8")
+    payload_bytes = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode(
+        "utf-8"
+    )
 
     if InvalidSignature:
         try:
@@ -98,16 +103,18 @@ def verify_license(license_path: Path) -> LicenseInfo | None:
                 padding.PKCS1v15(),
                 hashes.SHA256(),
             )
-        except InvalidSignature:
-            raise ValueError("Signature de licence invalide (falsifiée ou corrompue).")
+        except InvalidSignature as e:
+            raise ValueError(
+                "Signature de licence invalide (falsifiée ou corrompue)."
+            ) from e
         except Exception as e:
-            raise ValueError(f"Erreur de vérification de la licence : {e}")
+            raise ValueError(f"Erreur de vérification de la licence : {e}") from e
 
     try:
         issued_at = datetime.fromisoformat(payload["issued_at"])
         expires_at = datetime.fromisoformat(payload["expires_at"])
-    except (TypeError, ValueError):
-        raise ValueError("Dates de licence invalides.")
+    except (TypeError, ValueError) as e:
+        raise ValueError("Dates de licence invalides.") from e
 
     info = LicenseInfo(
         store_name=payload.get("store_name", "Inconnu"),
@@ -117,6 +124,8 @@ def verify_license(license_path: Path) -> LicenseInfo | None:
     )
 
     if info.is_expired:
-        raise ValueError(f"La licence a expiré le {info.expires_at.strftime('%d/%m/%Y')}.")
+        raise ValueError(
+            f"La licence a expiré le {info.expires_at.strftime('%d/%m/%Y')}."
+        )
 
     return info

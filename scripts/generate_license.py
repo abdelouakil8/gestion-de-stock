@@ -3,7 +3,7 @@
 import argparse
 import base64
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from cryptography.hazmat.primitives import hashes
@@ -49,19 +49,21 @@ def sign_license(
     payload = {
         "store_name": store_name,
         "max_devices": max_devices,
-        "issued_at": datetime.now(timezone.utc).isoformat(),
+        "issued_at": datetime.now(UTC).isoformat(),
         "expires_at": expires,
     }
-    payload_bytes = json.dumps(payload, separators=(',', ':'), sort_keys=True).encode("utf-8")
+    payload_bytes = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode(
+        "utf-8"
+    )
 
     signature = private_key.sign(
         payload_bytes,
         padding.PKCS1v15(),
         hashes.SHA256(),
     )
-    
+
     payload["signature"] = base64.b64encode(signature).decode("ascii")
-    
+
     output_path.write_text(json.dumps(payload, indent=2))
     print(f"License written to {output_path}")
 
@@ -89,7 +91,11 @@ def main() -> None:
         if "T" not in args.expires:
             args.expires += "T23:59:59Z"
         sign_license(
-            args.store_name, args.max_devices, args.expires, args.private_key, args.output
+            args.store_name,
+            args.max_devices,
+            args.expires,
+            args.private_key,
+            args.output,
         )
 
 

@@ -46,6 +46,55 @@ def client(monkeypatch):
     engine.dispose()
 
 
+def test_set_pin_end_to_end(monkeypatch, tmp_path):
+    """POST /auth/set-pin configures the PIN when none exists, 409 afterwards."""
+    from app.core.security import verify_pin
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    session = Session(engine)
+
+    # No PIN configured yet; isolate the .env write to a temp dir.
+    monkeypatch.setattr(settings, "pin_hash", None)
+    monkeypatch.setattr("app.api.routes.auth.RUNTIME_DIR", tmp_path)
+    app.dependency_overrides[deps.get_db] = lambda: session
+    try:
+        with TestClient(app, raise_server_exceptions=False) as c:
+            assert c.get("/api/v1/auth/status").json() == {"configured": False}
+
+            # First call configures the PIN and returns 200.
+            r = c.post("/api/v1/auth/set-pin", json={"pin": "4321"})
+            assert r.status_code == 200, r.text
+            assert r.json() == {"valid": True}
+
+            # The stored hash actually verifies the PIN (hash-then-verify round trip).
+            assert settings.pin_hash is not None
+            assert verify_pin("4321", settings.pin_hash)
+            assert not verify_pin("0000", settings.pin_hash)
+
+            # Written to the ISOLATED .env, not the real project one.
+            env_written = (tmp_path / ".env").read_text("utf-8")
+            assert "PIN_HASH=" in env_written
+
+            # The verify endpoint now accepts the freshly-set PIN.
+            assert (
+                c.post("/api/v1/auth/verify", json={"pin": "4321"}).status_code == 200
+            )
+
+            # Second call, PIN already set -> 409 pin_already_configured.
+            r2 = c.post("/api/v1/auth/set-pin", json={"pin": "9999"})
+            assert r2.status_code == 409
+            assert r2.json()["error"]["code"] == "pin_already_configured"
+    finally:
+        app.dependency_overrides.clear()
+        session.close()
+        engine.dispose()
+
+
 def build_catalog(client) -> dict:
     """Store + category + product (40 / 37.50 / 30) via the API itself."""
     store = client.post("/api/v1/stores", json={"name": "Boutique API"}).json()

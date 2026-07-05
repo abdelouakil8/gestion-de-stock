@@ -8,19 +8,16 @@ from decimal import Decimal
 from io import BytesIO
 from uuid import UUID
 
+from openpyxl import Workbook
+from openpyxl.styles import Font, numbers
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
-
-from openpyxl import Workbook
-from openpyxl.styles import Font, numbers
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Store
 from app.services import alerts, customers, statistics
-
 
 _A4_WIDTH, _A4_HEIGHT = A4
 _MARGIN = 20 * mm
@@ -33,6 +30,23 @@ PAYMENT_LABELS = {
     "mobile": "Mobile",
     "other": "Autre",
 }
+
+# Characters that make Excel/LibreOffice treat a cell as a formula.
+_DANGEROUS_CELL_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _sanitize_cell(value):
+    """Neutralize CSV/Excel formula injection.
+
+    A spreadsheet treats a text cell starting with ``=``, ``+``, ``-``, ``@``
+    (or a leading tab/carriage-return) as a formula. Any user-controlled
+    string written to a report — product/customer/category names, phone
+    numbers, arbitrary payment-method codes — is forced to literal text by
+    prefixing a single quote. Non-strings pass through untouched.
+    """
+    if isinstance(value, str) and value.startswith(_DANGEROUS_CELL_PREFIXES):
+        return "'" + value
+    return value
 
 
 def _safe(text: str) -> str:
@@ -110,61 +124,124 @@ def build_summary_report_pdf(
     section_header("Résumé financier")
     pdf.setFont("Helvetica", 10)
     pdf.drawString(_MARGIN, y, "Chiffre d'affaires :")
-    pdf.drawRightString(_MARGIN + 60*mm, y, str(summary.revenue))
+    pdf.drawRightString(_MARGIN + 60 * mm, y, str(summary.revenue))
     y -= _LINE
     pdf.drawString(_MARGIN, y, "Marge brute :")
-    pdf.drawRightString(_MARGIN + 60*mm, y, str(summary.gross_profit))
+    pdf.drawRightString(_MARGIN + 60 * mm, y, str(summary.gross_profit))
     y -= _LINE
     pdf.drawString(_MARGIN, y, "Nombre de ventes :")
-    pdf.drawRightString(_MARGIN + 60*mm, y, str(summary.sales_count))
+    pdf.drawRightString(_MARGIN + 60 * mm, y, str(summary.sales_count))
     y -= _LINE
     pdf.drawString(_MARGIN, y, "Total remises :")
-    pdf.drawRightString(_MARGIN + 60*mm, y, str(summary.total_discounts))
+    pdf.drawRightString(_MARGIN + 60 * mm, y, str(summary.total_discounts))
     y -= _LINE
 
     # 2. Meilleures ventes
     if top_prods:
         section_header("Meilleures ventes")
-        col_x = [(_MARGIN, "Produit"), (_MARGIN + 80*mm, "Quantité"), (_MARGIN + 120*mm, "CA")]
+        col_x = [
+            (_MARGIN, "Produit"),
+            (_MARGIN + 80 * mm, "Quantité"),
+            (_MARGIN + 120 * mm, "CA"),
+        ]
         table_row([(c[1], c[0]) for c in col_x], bold=True)
         for p in top_prods:
             name = p.name[:35] + "…" if len(p.name) > 35 else p.name
-            table_row([(name, col_x[0][0]), (p.quantity_sold, col_x[1][0]), (p.revenue, col_x[2][0])])
+            table_row(
+                [
+                    (name, col_x[0][0]),
+                    (p.quantity_sold, col_x[1][0]),
+                    (p.revenue, col_x[2][0]),
+                ]
+            )
 
     # 3. Meilleurs clients
     if top_custs:
         section_header("Meilleurs clients")
-        col_x = [(_MARGIN, "Client"), (_MARGIN + 60*mm, "Téléphone"), (_MARGIN + 100*mm, "CA"), (_MARGIN + 140*mm, "Ventes")]
+        col_x = [
+            (_MARGIN, "Client"),
+            (_MARGIN + 60 * mm, "Téléphone"),
+            (_MARGIN + 100 * mm, "CA"),
+            (_MARGIN + 140 * mm, "Ventes"),
+        ]
         table_row([(c[1], c[0]) for c in col_x], bold=True)
         for c in top_custs:
             name = c.name[:25] + "…" if len(c.name) > 25 else c.name
-            table_row([(name, col_x[0][0]), (c.phone, col_x[1][0]), (c.revenue, col_x[2][0]), (c.sales_count, col_x[3][0])])
+            table_row(
+                [
+                    (name, col_x[0][0]),
+                    (c.phone, col_x[1][0]),
+                    (c.revenue, col_x[2][0]),
+                    (c.sales_count, col_x[3][0]),
+                ]
+            )
 
     # 4. Répartition par mode de paiement
     if payments:
         section_header("Répartition par mode de paiement")
-        col_x = [(_MARGIN, "Mode"), (_MARGIN + 60*mm, "Montant"), (_MARGIN + 120*mm, "Transactions")]
+        col_x = [
+            (_MARGIN, "Mode"),
+            (_MARGIN + 60 * mm, "Montant"),
+            (_MARGIN + 120 * mm, "Transactions"),
+        ]
         table_row([(c[1], c[0]) for c in col_x], bold=True)
         for p in payments:
-            table_row([(PAYMENT_LABELS.get(p.payment_method, p.payment_method), col_x[0][0]), (p.total, col_x[1][0]), (p.count, col_x[2][0])])
+            table_row(
+                [
+                    (
+                        PAYMENT_LABELS.get(p.payment_method, p.payment_method),
+                        col_x[0][0],
+                    ),
+                    (p.total, col_x[1][0]),
+                    (p.count, col_x[2][0]),
+                ]
+            )
 
     # 5. Stock faible
     if low_stock:
         section_header("Stock faible")
-        col_x = [(_MARGIN, "Produit"), (_MARGIN + 80*mm, "Stock"), (_MARGIN + 120*mm, "Seuil")]
+        col_x = [
+            (_MARGIN, "Produit"),
+            (_MARGIN + 80 * mm, "Stock"),
+            (_MARGIN + 120 * mm, "Seuil"),
+        ]
         table_row([(c[1], c[0]) for c in col_x], bold=True)
         for p in low_stock:
             name = p.name[:35] + "…" if len(p.name) > 35 else p.name
-            table_row([(name, col_x[0][0]), (p.stock_quantity, col_x[1][0]), (p.low_stock_threshold, col_x[2][0])])
+            table_row(
+                [
+                    (name, col_x[0][0]),
+                    (p.stock_quantity, col_x[1][0]),
+                    (p.low_stock_threshold, col_x[2][0]),
+                ]
+            )
 
     # 6. Crédits en attente
     if credits:
         section_header("Crédits en attente")
-        col_x = [(_MARGIN, "Client"), (_MARGIN + 50*mm, "Total"), (_MARGIN + 80*mm, "Payé"), (_MARGIN + 110*mm, "Reste"), (_MARGIN + 140*mm, "Ancienneté")]
+        col_x = [
+            (_MARGIN, "Client"),
+            (_MARGIN + 50 * mm, "Total"),
+            (_MARGIN + 80 * mm, "Payé"),
+            (_MARGIN + 110 * mm, "Reste"),
+            (_MARGIN + 140 * mm, "Ancienneté"),
+        ]
         table_row([(c[1], c[0]) for c in col_x], bold=True)
         for c in credits:
-            name = (c.customer_name or "Inconnu")[:20] + "…" if len((c.customer_name or "")) > 20 else (c.customer_name or "Inconnu")
-            table_row([(name, col_x[0][0]), (c.total_amount, col_x[1][0]), (c.paid_amount, col_x[2][0]), (c.balance, col_x[3][0]), (f"{c.age_days} j", col_x[4][0])])
+            name = (
+                (c.customer_name or "Inconnu")[:20] + "…"
+                if len(c.customer_name or "") > 20
+                else (c.customer_name or "Inconnu")
+            )
+            table_row(
+                [
+                    (name, col_x[0][0]),
+                    (c.total_amount, col_x[1][0]),
+                    (c.paid_amount, col_x[2][0]),
+                    (c.balance, col_x[3][0]),
+                    (f"{c.age_days} j", col_x[4][0]),
+                ]
+            )
 
     _draw_footer()
     pdf.save()
@@ -183,12 +260,12 @@ def build_summary_report_xlsx(
     credits = alerts.outstanding_credits(db, store_id)
 
     wb = Workbook()
-    
+
     def format_headers(ws, headers):
         ws.append(headers)
         for cell in ws[1]:
             cell.font = Font(bold=True)
-    
+
     def write_decimal(ws, row):
         # Convert Decimals to float and apply formatting
         new_row = []
@@ -196,7 +273,7 @@ def build_summary_report_xlsx(
             if isinstance(val, Decimal):
                 new_row.append(float(val))
             else:
-                new_row.append(val)
+                new_row.append(_sanitize_cell(val))
         ws.append(new_row)
         # Apply format to just written row
         for cell in ws[ws.max_row]:
@@ -211,56 +288,62 @@ def build_summary_report_xlsx(
     write_decimal(ws_syn, ["Marge brute", summary.gross_profit])
     write_decimal(ws_syn, ["Nombre de ventes", summary.sales_count])
     write_decimal(ws_syn, ["Total remises", summary.total_discounts])
-    ws_syn.column_dimensions['A'].width = 25
-    ws_syn.column_dimensions['B'].width = 15
+    ws_syn.column_dimensions["A"].width = 25
+    ws_syn.column_dimensions["B"].width = 15
 
     # 2. Meilleures ventes
     ws_prod = wb.create_sheet("Meilleures ventes")
     format_headers(ws_prod, ["Produit", "Quantité vendue", "Chiffre d'affaires"])
     for p in top_prods:
         write_decimal(ws_prod, [p.name, p.quantity_sold, p.revenue])
-    ws_prod.column_dimensions['A'].width = 30
-    ws_prod.column_dimensions['B'].width = 20
-    ws_prod.column_dimensions['C'].width = 20
+    ws_prod.column_dimensions["A"].width = 30
+    ws_prod.column_dimensions["B"].width = 20
+    ws_prod.column_dimensions["C"].width = 20
 
     # 3. Meilleurs clients
     ws_cust = wb.create_sheet("Meilleurs clients")
     format_headers(ws_cust, ["Client", "Téléphone", "CA", "Nombre de ventes"])
     for c in top_custs:
         write_decimal(ws_cust, [c.name, c.phone, c.revenue, c.sales_count])
-    ws_cust.column_dimensions['A'].width = 30
-    ws_cust.column_dimensions['B'].width = 15
-    ws_cust.column_dimensions['C'].width = 15
-    ws_cust.column_dimensions['D'].width = 20
+    ws_cust.column_dimensions["A"].width = 30
+    ws_cust.column_dimensions["B"].width = 15
+    ws_cust.column_dimensions["C"].width = 15
+    ws_cust.column_dimensions["D"].width = 20
 
     # 4. Modes de paiement
     ws_pay = wb.create_sheet("Modes de paiement")
     format_headers(ws_pay, ["Mode", "Montant", "Transactions"])
     for p in payments:
-        write_decimal(ws_pay, [PAYMENT_LABELS.get(p.payment_method, p.payment_method), p.total, p.count])
-    ws_pay.column_dimensions['A'].width = 20
-    ws_pay.column_dimensions['B'].width = 15
-    ws_pay.column_dimensions['C'].width = 15
+        write_decimal(
+            ws_pay,
+            [PAYMENT_LABELS.get(p.payment_method, p.payment_method), p.total, p.count],
+        )
+    ws_pay.column_dimensions["A"].width = 20
+    ws_pay.column_dimensions["B"].width = 15
+    ws_pay.column_dimensions["C"].width = 15
 
     # 5. Stock faible
     ws_stock = wb.create_sheet("Stock faible")
     format_headers(ws_stock, ["Produit", "Stock actuel", "Seuil d'alerte"])
     for p in low_stock:
         write_decimal(ws_stock, [p.name, p.stock_quantity, p.low_stock_threshold])
-    ws_stock.column_dimensions['A'].width = 30
-    ws_stock.column_dimensions['B'].width = 15
-    ws_stock.column_dimensions['C'].width = 15
+    ws_stock.column_dimensions["A"].width = 30
+    ws_stock.column_dimensions["B"].width = 15
+    ws_stock.column_dimensions["C"].width = 15
 
     # 6. Crédits en attente
     ws_cred = wb.create_sheet("Crédits en attente")
     format_headers(ws_cred, ["Client", "Total", "Payé", "Reste", "Ancienneté (jours)"])
     for c in credits:
-        write_decimal(ws_cred, [c.customer_name, c.total_amount, c.paid_amount, c.balance, c.age_days])
-    ws_cred.column_dimensions['A'].width = 30
-    ws_cred.column_dimensions['B'].width = 15
-    ws_cred.column_dimensions['C'].width = 15
-    ws_cred.column_dimensions['D'].width = 15
-    ws_cred.column_dimensions['E'].width = 20
+        write_decimal(
+            ws_cred,
+            [c.customer_name, c.total_amount, c.paid_amount, c.balance, c.age_days],
+        )
+    ws_cred.column_dimensions["A"].width = 30
+    ws_cred.column_dimensions["B"].width = 15
+    ws_cred.column_dimensions["C"].width = 15
+    ws_cred.column_dimensions["D"].width = 15
+    ws_cred.column_dimensions["E"].width = 20
 
     buffer = BytesIO()
     wb.save(buffer)

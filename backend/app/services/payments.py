@@ -60,12 +60,14 @@ def record_payment(
                 balance=sale.total_amount - sale.paid_amount, attempted=amount
             )
 
-        db.add(Payment(
-            store_id=sale.store_id,
-            sale_id=sale.id,
-            amount=amount,
-            payment_method=payment_method,
-        ))
+        db.add(
+            Payment(
+                store_id=sale.store_id,
+                sale_id=sale.id,
+                amount=amount,
+                payment_method=payment_method,
+            )
+        )
         db.commit()
     except Exception:
         db.rollback()

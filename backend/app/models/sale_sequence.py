@@ -22,8 +22,6 @@ class SaleSequence(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    store_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("stores.id"), nullable=False
-    )
+    store_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stores.id"), nullable=False)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     last_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

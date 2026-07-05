@@ -40,9 +40,9 @@ try:
     from app.main import app as fastapi_app
     from services.api_client import ApiClient, ApiError
     from ui import strings
-    from ui.styles import tokens
     from ui.screens.login import LoginDialog
     from ui.screens.main_window import MainWindow
+    from ui.styles import tokens
     from ui.styles.tokens import render_qss
 except Exception:
     _crash_log("import")
@@ -119,6 +119,27 @@ def _install_qt_exception_guard() -> None:
     sys.excepthook = _hook
 
 
+def _check_license() -> bool:
+    """Verify the offline license once, before the app opens.
+
+    Shows a French error dialog and returns False when the license is
+    missing, tampered, or expired (``verify_license`` raises ``ValueError``
+    on an expired or invalid license). Returns True when the app may proceed.
+    """
+    from services.license import find_license, verify_license
+
+    lic_path = find_license()
+    if not lic_path:
+        QMessageBox.critical(None, strings.LICENSE_ERROR_TITLE, strings.LICENSE_MISSING)
+        return False
+    try:
+        verify_license(lic_path)
+    except ValueError as e:
+        QMessageBox.critical(None, strings.LICENSE_ERROR_TITLE, str(e))
+        return False
+    return True
+
+
 def main() -> int:
     server = start_api_server()
 
@@ -132,15 +153,11 @@ def main() -> int:
     if os.environ.get("POS_FORCE_RTL"):
         qt_app.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
-    from services.license import find_license, verify_license
-    lic_path = find_license()
-    if not lic_path:
-        QMessageBox.critical(None, strings.LICENSE_ERROR_TITLE, strings.LICENSE_MISSING)
-        return 1
-    try:
-        verify_license(lic_path)
-    except ValueError as e:
-        QMessageBox.critical(None, strings.LICENSE_ERROR_TITLE, str(e))
+    smoke_test = bool(os.environ.get("POS_SMOKE_TEST"))
+
+    # License gate: the interactive app verifies exactly once, before any real
+    # work. Automated smoke tests (POS_SMOKE_TEST) skip it entirely.
+    if not smoke_test and not _check_license():
         return 1
 
     if not wait_for_api():
@@ -161,29 +178,14 @@ def main() -> int:
     try:
         store_settings = api.get_settings(store["id"])
         tokens.CURRENT_ACCENT = store_settings.get("theme_accent", "#2563EB")
-        
+
         from ui.i18n import apply_language
+
         apply_language(store_settings.get("ui_language", "fr"))
     except Exception as exc:
         logger.warning("Failed to fetch settings at startup: {}", exc)
 
-    smoke_test = bool(os.environ.get("POS_SMOKE_TEST"))
     if not smoke_test:  # automated checks skip the interactive PIN gate
-        from services import license
-        lic_path = license.find_license()
-        if lic_path:
-            try:
-                lic_info = license.verify_license(lic_path)
-                if lic_info.is_expired:
-                    QMessageBox.critical(None, strings.ERROR_TITLE, "Licence expirée.")
-                    return 0
-            except ValueError as e:
-                QMessageBox.critical(None, strings.ERROR_TITLE, str(e))
-                return 0
-        else:
-            QMessageBox.critical(None, strings.ERROR_TITLE, "Fichier de licence (license.lic) introuvable.")
-            return 0
-
         # Check if PIN is configured safely without triggering a 401 warning
         try:
             status_data = api.get_auth_status()
@@ -193,6 +195,7 @@ def main() -> int:
 
         if not pin_configured:
             from ui.screens.onboarding import OnboardingWizard
+
             wizard = OnboardingWizard(api)
             if not wizard.exec():
                 return 0
@@ -200,7 +203,7 @@ def main() -> int:
             login = LoginDialog(api)
             if not login.exec():
                 return 0
-                
+
     logger.info(
         "UI started | store_id={} rtl={}",
         store["id"],

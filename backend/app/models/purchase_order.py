@@ -24,9 +24,7 @@ class PurchaseOrder(BaseModel, StoreScopedMixin):
         String(16), nullable=False, default="received", server_default="received"
     )
 
-    items: Mapped[list["PurchaseOrderItem"]] = relationship(
-        back_populates="order"
-    )
+    items: Mapped[list["PurchaseOrderItem"]] = relationship(back_populates="order")
     payments: Mapped[list["SupplierPayment"]] = relationship(
         back_populates="order", order_by="SupplierPayment.created_at"
     )
@@ -60,9 +58,7 @@ class SupplierPayment(BaseModel, StoreScopedMixin):
     """Append-only payment to a supplier — mirrors Payment exactly."""
 
     __tablename__ = "supplier_payments"
-    __table_args__ = (
-        CheckConstraint("amount > 0", name="supplier_payment_positive"),
-    )
+    __table_args__ = (CheckConstraint("amount > 0", name="supplier_payment_positive"),)
 
     order_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("purchase_orders.id"), nullable=False, index=True

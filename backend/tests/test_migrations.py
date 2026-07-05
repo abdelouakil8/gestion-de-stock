@@ -376,9 +376,7 @@ def test_prepare_database_upgrades_phase6_legacy_create_all_to_head(alembic_cfg)
             "SELECT version_num FROM alembic_version"
         ).scalar()
     assert version == PHASE11_REV
-    assert "search_text" in {
-        c["name"] for c in inspector.get_columns("products")
-    }
+    assert "search_text" in {c["name"] for c in inspector.get_columns("products")}
     assert "product_packagings" in inspector.get_table_names()
     engine.dispose()
 
@@ -522,9 +520,7 @@ def test_prepare_database_upgrades_phase7_legacy_to_phase8(alembic_cfg):
         conn.exec_driver_sql("DROP TABLE IF EXISTS alembic_version")
     inspector = sa.inspect(engine)
     # Sanity: phase-7 schema has search_text but not the phase-8 table.
-    assert "search_text" in {
-        c["name"] for c in inspector.get_columns("products")
-    }
+    assert "search_text" in {c["name"] for c in inspector.get_columns("products")}
     assert "product_packagings" not in inspector.get_table_names()
 
     prepare_database(engine)

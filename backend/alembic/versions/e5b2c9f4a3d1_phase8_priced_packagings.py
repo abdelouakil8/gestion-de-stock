@@ -115,9 +115,7 @@ def upgrade() -> None:
             sa.Column("packaging_label", sa.String(length=80), nullable=True)
         )
         batch_op.add_column(
-            sa.Column(
-                "unit_count", sa.Integer(), nullable=False, server_default="1"
-            )
+            sa.Column("unit_count", sa.Integer(), nullable=False, server_default="1")
         )
         batch_op.create_index(
             batch_op.f("ix_sale_items_packaging_id"), ["packaging_id"], unique=False

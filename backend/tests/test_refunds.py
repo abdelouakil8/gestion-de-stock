@@ -177,7 +177,13 @@ class TestRefundCreation:
             "/api/v1/sales/checkout",
             json={
                 "store_id": store["id"],
-                "items": [{"product_id": product["id"], "quantity": 5, "price_level": "detail"}],
+                "items": [
+                    {
+                        "product_id": product["id"],
+                        "quantity": 5,
+                        "price_level": "detail",
+                    }
+                ],
                 "payment": {
                     "mode": "partial",
                     "amount_paid": "200.00",

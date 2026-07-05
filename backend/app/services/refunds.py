@@ -147,15 +147,17 @@ def get_refundable_items(db: Session, sale_id: UUID) -> list[dict]:
         already = _already_refunded_qty(db, si.id)
         available = si.quantity - already
         if available > 0:
-            result.append({
-                "sale_item_id": str(si.id),
-                "product_id": str(si.product_id),
-                "product_name": si.product.name if si.product else "?",
-                "packaging_label": si.packaging_label,
-                "unit_count": si.unit_count,
-                "original_quantity": si.quantity,
-                "already_refunded": already,
-                "available": available,
-                "unit_price": str(si.unit_price_applied),
-            })
+            result.append(
+                {
+                    "sale_item_id": str(si.id),
+                    "product_id": str(si.product_id),
+                    "product_name": si.product.name if si.product else "?",
+                    "packaging_label": si.packaging_label,
+                    "unit_count": si.unit_count,
+                    "original_quantity": si.quantity,
+                    "already_refunded": already,
+                    "available": available,
+                    "unit_price": str(si.unit_price_applied),
+                }
+            )
     return result

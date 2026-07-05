@@ -36,9 +36,7 @@ def create_supplier(payload: SupplierCreate, db: DbDep):
     return suppliers.create_supplier(db, payload)
 
 
-@router.patch(
-    "/{supplier_id}", response_model=SupplierRead, dependencies=[OwnerPinDep]
-)
+@router.patch("/{supplier_id}", response_model=SupplierRead, dependencies=[OwnerPinDep])
 def update_supplier(supplier_id: UUID, payload: SupplierUpdate, db: DbDep):
     return suppliers.update_supplier(db, supplier_id, payload)
 

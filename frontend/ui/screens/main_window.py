@@ -298,6 +298,7 @@ class MainWindow(QMainWindow):
 
     def _check_for_updates(self) -> None:
         from services.updater import check_for_update
+
         run_api(
             check_for_update,
             self._on_update_checked,
@@ -307,7 +308,11 @@ class MainWindow(QMainWindow):
     def _on_update_checked(self, info: object) -> None:
         if info:
             from ui.widgets.toast import show_toast
-            msg = f"{strings.UPDATE_AVAILABLE.format(version=info.version)}\n{strings.UPDATE_AVAILABLE_HINT.format(url=info.download_url)}"
+
+            msg = (
+                f"{strings.UPDATE_AVAILABLE.format(version=info.version)}\n"
+                f"{strings.UPDATE_AVAILABLE_HINT.format(url=info.download_url)}"
+            )
             show_toast(self, msg, duration=10000)
 
     def _fit_to_screen(self) -> None:

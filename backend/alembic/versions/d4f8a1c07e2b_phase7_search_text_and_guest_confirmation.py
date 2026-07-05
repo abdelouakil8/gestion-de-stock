@@ -70,9 +70,7 @@ def upgrade() -> None:
     # -------------------------------------- 2. new sales.guest_confirmed_at
     with op.batch_alter_table("sales", schema=None) as batch_op:
         batch_op.add_column(
-            sa.Column(
-                "guest_confirmed_at", sa.DateTime(timezone=True), nullable=True
-            )
+            sa.Column("guest_confirmed_at", sa.DateTime(timezone=True), nullable=True)
         )
 
     # ------------------------------------------- backfill products.search_text

@@ -54,9 +54,7 @@ def receive_stock(db: Session, data: PurchaseOrderCreate) -> PurchaseOrder:
             if product is None:
                 raise NotFoundError("produit", line.product_id)
 
-            line_total = (line.unit_cost * line.quantity).quantize(
-                Decimal("0.01")
-            )
+            line_total = (line.unit_cost * line.quantity).quantize(Decimal("0.01"))
             total += line_total
 
             inventory.increment_stock(db, product.id, line.quantity)

@@ -32,6 +32,7 @@ Existing payments get payment_method="cash".
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "a1b2c3d4e5f6"
@@ -69,9 +70,7 @@ def upgrade() -> None:
 
     # 2. Invoice number on sales (nullable — backfilled below).
     with op.batch_alter_table("sales") as batch_op:
-        batch_op.add_column(
-            sa.Column("invoice_number", sa.Integer(), nullable=True)
-        )
+        batch_op.add_column(sa.Column("invoice_number", sa.Integer(), nullable=True))
 
     # 3. Discount on sale_items.
     with op.batch_alter_table("sale_items") as batch_op:
@@ -108,9 +107,7 @@ def upgrade() -> None:
         ).fetchall()
         for i, (sale_id,) in enumerate(sales, start=1):
             conn.execute(
-                sa.text(
-                    "UPDATE sales SET invoice_number = :num WHERE id = :sid"
-                ),
+                sa.text("UPDATE sales SET invoice_number = :num WHERE id = :sid"),
                 {"num": i, "sid": sale_id},
             )
         if sales:

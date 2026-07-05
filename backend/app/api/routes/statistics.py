@@ -108,9 +108,7 @@ def customer_stats(customer_id: UUID, db: DbDep):
     response_model=list[PaymentMethodBreakdown],
     dependencies=[OwnerPinDep],
 )
-def payment_methods(
-    store_id: UUID, date_from: date, date_to: date, db: DbDep
-) -> list:
+def payment_methods(store_id: UUID, date_from: date, date_to: date, db: DbDep) -> list:
     """Revenue breakdown by payment method (cash/card/mobile/other)."""
     start, end = _day_bounds(date_from, date_to)
     return statistics.payment_method_breakdown(db, store_id, start, end)

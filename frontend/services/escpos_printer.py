@@ -20,15 +20,15 @@ _APP = "GestionStockPOS"
 _KEY_PREFIX = "escpos_enabled_"
 
 # ESC/POS Commands
-_INIT = b'\x1B\x40'
-_ALIGN_LEFT = b'\x1B\x61\x00'
-_ALIGN_CENTER = b'\x1B\x61\x01'
-_BOLD_ON = b'\x1B\x45\x01'
-_BOLD_OFF = b'\x1B\x45\x00'
-_DOUBLE_HEIGHT_ON = b'\x1B\x21\x10'
-_DOUBLE_HEIGHT_OFF = b'\x1B\x21\x00'
-_CUT = b'\x1D\x56\x41\x00'
-_DRAWER_KICK = b'\x1B\x70\x00\x19\xFA'
+_INIT = b"\x1b\x40"
+_ALIGN_LEFT = b"\x1b\x61\x00"
+_ALIGN_CENTER = b"\x1b\x61\x01"
+_BOLD_ON = b"\x1b\x45\x01"
+_BOLD_OFF = b"\x1b\x45\x00"
+_DOUBLE_HEIGHT_ON = b"\x1b\x21\x10"
+_DOUBLE_HEIGHT_OFF = b"\x1b\x21\x00"
+_CUT = b"\x1d\x56\x41\x00"
+_DRAWER_KICK = b"\x1b\x70\x00\x19\xfa"
 
 _COLS = 32
 
@@ -48,29 +48,31 @@ def set_escpos_enabled(printer_name: str, enabled: bool) -> None:
 
 
 def _safe_cp437(text: str) -> bytes:
-    return str(text).encode('cp437', errors='replace')
+    return str(text).encode("cp437", errors="replace")
 
 
-def build_escpos_receipt(sale: dict, settings: dict | None, store_name: str, customer_name: str | None) -> bytes:
+def build_escpos_receipt(
+    sale: dict, settings: dict | None, store_name: str, customer_name: str | None
+) -> bytes:
     settings = settings or {}
     width = _COLS
 
     def fit(text: str) -> bytes:
         if len(text) > width:
             text = text[: width - 1] + "…"
-        return _safe_cp437(text) + b'\n'
+        return _safe_cp437(text) + b"\n"
 
     def center(text: str) -> bytes:
         if len(text) > width:
             text = text[: width - 1] + "…"
         text = text.center(width).rstrip()
-        return _safe_cp437(text) + b'\n'
+        return _safe_cp437(text) + b"\n"
 
     def row(left: str, right: str) -> bytes:
         space = width - len(right)
-        left = left if len(left) <= space else left[:space - 1] + "…"
+        left = left if len(left) <= space else left[: space - 1] + "…"
         text = left.ljust(space) + right
-        return _safe_cp437(text) + b'\n'
+        return _safe_cp437(text) + b"\n"
 
     buffer = bytearray()
     buffer.extend(_INIT)
@@ -98,7 +100,7 @@ def build_escpos_receipt(sale: dict, settings: dict | None, store_name: str, cus
 
     buffer.extend(center(f"Ticket #{sale['id'].split('-')[0].upper()}"))
     buffer.extend(_ALIGN_LEFT)
-    buffer.extend(b'-' * width + b'\n')
+    buffer.extend(b"-" * width + b"\n")
 
     for item in sale.get("items", []):
         name = item.get("product_name", "Produit")
@@ -108,8 +110,8 @@ def build_escpos_receipt(sale: dict, settings: dict | None, store_name: str, cus
         buffer.extend(fit(name))
         buffer.extend(row(f"  {qty} x {price:.2f}", f"{total:.2f}"))
 
-    buffer.extend(b'-' * width + b'\n')
-    
+    buffer.extend(b"-" * width + b"\n")
+
     total_amount = Decimal(str(sale.get("total_amount", 0)))
     buffer.extend(_BOLD_ON)
     buffer.extend(row("TOTAL", f"{total_amount:.2f}"))
@@ -123,11 +125,11 @@ def build_escpos_receipt(sale: dict, settings: dict | None, store_name: str, cus
         buffer.extend(row("Payé", f"{paid:.2f}"))
         buffer.extend(row("Reste", f"{balance:.2f}"))
 
-    buffer.extend(b'\n')
+    buffer.extend(b"\n")
     buffer.extend(_ALIGN_CENTER)
     footer = settings.get("receipt_footer") or "Merci de votre visite !"
     buffer.extend(center(footer))
-    buffer.extend(b'\n\n\n\n')
+    buffer.extend(b"\n\n\n\n")
     buffer.extend(_CUT)
 
     return bytes(buffer)
@@ -136,7 +138,7 @@ def build_escpos_receipt(sale: dict, settings: dict | None, store_name: str, cus
 def send_raw_to_printer(printer_name: str, data: bytes) -> None:
     if not win32print:
         raise OSError("win32print non disponible.")
-    
+
     try:
         hprinter = win32print.OpenPrinter(printer_name)
         try:
@@ -149,7 +151,7 @@ def send_raw_to_printer(printer_name: str, data: bytes) -> None:
             win32print.ClosePrinter(hprinter)
     except Exception as e:
         logger.error(f"Erreur impression ESC/POS: {e}")
-        raise OSError(f"Erreur d'impression : {e}")
+        raise OSError(f"Erreur d'impression : {e}") from e
 
 
 def kick_drawer(printer_name: str) -> None:
@@ -179,12 +181,14 @@ def print_receipt_escpos(
         return False
 
     try:
-        receipt_bytes = build_escpos_receipt(sale_data, settings, store_name, customer_name)
-        
+        receipt_bytes = build_escpos_receipt(
+            sale_data, settings, store_name, customer_name
+        )
+
         # If it's a cash sale, append the drawer kick to the same job
         if payment_method == "cash":
             receipt_bytes += _DRAWER_KICK
-            
+
         send_raw_to_printer(printer_name, receipt_bytes)
         logger.info(f"Impression ESC/POS réussie sur {printer_name}")
         return True

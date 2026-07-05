@@ -77,9 +77,7 @@ class KpiCard(Card):
 
         self.value = QLabel("—")
         self.value.setObjectName("StatCardValue")
-        self.value.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
+        self.value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.body.addWidget(self.value)
 
         self.sub = QLabel("")
@@ -447,7 +445,9 @@ class StatisticsScreen(QWidget):
         row.setSpacing(SPACING["md"])
         self.kpi_revenue = KpiCard(strings.STATS_REVENUE, "fa5s.coins", *_KPI_BLUE)
         self.kpi_profit = KpiCard(strings.STATS_PROFIT, "fa5s.chart-line", *_KPI_GREEN)
-        self.kpi_sales = KpiCard(strings.STATS_SALES_COUNT, "fa5s.receipt", *_KPI_VIOLET)
+        self.kpi_sales = KpiCard(
+            strings.STATS_SALES_COUNT, "fa5s.receipt", *_KPI_VIOLET
+        )
         self.kpi_discount = KpiCard(strings.STATS_DISCOUNTS, "fa5s.tag", *_KPI_AMBER)
         for card in (
             self.kpi_revenue,

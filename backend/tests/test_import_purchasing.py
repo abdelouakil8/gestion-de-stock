@@ -66,9 +66,7 @@ class TestInvoiceNumbering:
             "/api/v1/sales/checkout",
             json={
                 "store_id": cat["store"]["id"],
-                "items": [
-                    {"product_id": cat["product"]["id"], "quantity": 1}
-                ],
+                "items": [{"product_id": cat["product"]["id"], "quantity": 1}],
             },
         ).json()
         assert sale["invoice_number"] == 1
@@ -80,9 +78,7 @@ class TestInvoiceNumbering:
                 "/api/v1/sales/checkout",
                 json={
                     "store_id": cat["store"]["id"],
-                    "items": [
-                        {"product_id": cat["product"]["id"], "quantity": 1}
-                    ],
+                    "items": [{"product_id": cat["product"]["id"], "quantity": 1}],
                 },
             ).json()
             assert sale["invoice_number"] == expected
@@ -93,9 +89,7 @@ class TestInvoiceNumbering:
             "/api/v1/sales/checkout",
             json={
                 "store_id": cat["store"]["id"],
-                "items": [
-                    {"product_id": cat["product"]["id"], "quantity": 1}
-                ],
+                "items": [{"product_id": cat["product"]["id"], "quantity": 1}],
             },
         ).json()
         receipt = client.get(f"/api/v1/sales/{sale['id']}/receipt")
@@ -200,9 +194,7 @@ class TestPaymentMethod:
             "/api/v1/sales/checkout",
             json={
                 "store_id": cat["store"]["id"],
-                "items": [
-                    {"product_id": cat["product"]["id"], "quantity": 1}
-                ],
+                "items": [{"product_id": cat["product"]["id"], "quantity": 1}],
                 "payment": {"mode": "full", "payment_method": "card"},
             },
         ).json()
@@ -215,9 +207,7 @@ class TestPaymentMethod:
                 "/api/v1/sales/checkout",
                 json={
                     "store_id": cat["store"]["id"],
-                    "items": [
-                        {"product_id": cat["product"]["id"], "quantity": 1}
-                    ],
+                    "items": [{"product_id": cat["product"]["id"], "quantity": 1}],
                     "payment": {"mode": "full", "payment_method": method},
                 },
             )
@@ -240,9 +230,7 @@ class TestPaymentMethod:
 
 class TestCSVImport:
     def test_import_creates_products(self, client):
-        store = client.post(
-            "/api/v1/stores", json={"name": "ImportStore"}
-        ).json()
+        store = client.post("/api/v1/stores", json={"name": "ImportStore"}).json()
         csv = (
             "name;barcode;price_detail;price_gros;price_super_gros;"
             "cost_price;stock_quantity\n"
@@ -262,9 +250,7 @@ class TestCSVImport:
         assert data["errors"] == []
 
     def test_import_updates_by_barcode(self, client):
-        store = client.post(
-            "/api/v1/stores", json={"name": "ImportStore2"}
-        ).json()
+        store = client.post("/api/v1/stores", json={"name": "ImportStore2"}).json()
         csv1 = (
             "name;barcode;price_detail;price_gros;price_super_gros;"
             "cost_price;stock_quantity\n"
@@ -292,9 +278,7 @@ class TestCSVImport:
         assert data["created"] == 0
 
     def test_import_row_errors_do_not_abort(self, client):
-        store = client.post(
-            "/api/v1/stores", json={"name": "ImportStore3"}
-        ).json()
+        store = client.post("/api/v1/stores", json={"name": "ImportStore3"}).json()
         csv = (
             "name;barcode;price_detail;price_gros;price_super_gros;"
             "cost_price;stock_quantity\n"
@@ -319,9 +303,7 @@ class TestCSVImport:
 
 class TestSuppliers:
     def test_create_and_list(self, client):
-        store = client.post(
-            "/api/v1/stores", json={"name": "SupStore"}
-        ).json()
+        store = client.post("/api/v1/stores", json={"name": "SupStore"}).json()
         resp = client.post(
             "/api/v1/suppliers",
             json={
@@ -340,18 +322,14 @@ class TestSuppliers:
         assert len(listed) == 1
 
     def test_duplicate_phone_rejected(self, client):
-        store = client.post(
-            "/api/v1/stores", json={"name": "SupStore2"}
-        ).json()
+        store = client.post("/api/v1/stores", json={"name": "SupStore2"}).json()
         payload = {
             "store_id": store["id"],
             "name": "Fournisseur A",
             "phone": "0555123456",
         }
         client.post("/api/v1/suppliers", json=payload, headers=PIN_HEADER)
-        resp = client.post(
-            "/api/v1/suppliers", json=payload, headers=PIN_HEADER
-        )
+        resp = client.post("/api/v1/suppliers", json=payload, headers=PIN_HEADER)
         assert resp.status_code == 409
 
 
@@ -393,9 +371,7 @@ class TestPurchasing:
         assert order["total_amount"] == "100.00"
         assert order["paid_amount"] == "50.00"
 
-        updated = client.get(
-            f"/api/v1/products/{cat['product']['id']}"
-        ).json()
+        updated = client.get(f"/api/v1/products/{cat['product']['id']}").json()
         assert updated["stock_quantity"] == 120  # 100 + 20
 
     def test_supplier_payment_recorded(self, client):

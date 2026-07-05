@@ -460,6 +460,9 @@ class SaleDetailDialog(ModalDialog):
         dialog = RefundDialog(self.api, self.sale, parent=self)
         if dialog.exec() and dialog.refund_created:
             self.changed = True
-            show_toast(self, strings.REFUND_CREATED.format(
-                amount=fmt.fmt_money(dialog.refund_amount)
-            ))
+            show_toast(
+                self,
+                strings.REFUND_CREATED.format(
+                    amount=fmt.fmt_money(dialog.refund_amount)
+                ),
+            )

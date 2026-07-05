@@ -7,6 +7,17 @@ import pytest
 from app.services import backup
 
 
+def _make_sqlite(path):
+    """Create a minimal valid SQLite file at ``path`` and return it."""
+    import sqlite3
+
+    conn = sqlite3.connect(str(path))
+    conn.execute("CREATE TABLE t (id INTEGER)")
+    conn.commit()
+    conn.close()
+    return path
+
+
 @pytest.fixture()
 def tmp_runtime(monkeypatch, tmp_path):
     """Point backup paths at a temp directory with a real SQLite DB."""
@@ -31,10 +42,14 @@ def tmp_runtime(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         "app.services.backup.settings",
-        type("S", (), {
-            "database_url": f"sqlite:///{db_file.as_posix()}",
-            "media_dir": str(media_dir),
-        })(),
+        type(
+            "S",
+            (),
+            {
+                "database_url": f"sqlite:///{db_file.as_posix()}",
+                "media_dir": str(media_dir),
+            },
+        )(),
     )
     monkeypatch.setattr("app.services.backup.RUNTIME_DIR", tmp_path)
     return tmp_path
@@ -114,6 +129,40 @@ class TestRestoreBackup:
         with pytest.raises(ValueError, match="invalide"):
             backup.restore_backup(bad)
 
+    def test_rejects_zip_slip_traversal(self, tmp_path, tmp_runtime):
+        """A crafted archive with a ../ traversal entry is rejected, not extracted."""
+        # A real pos.db so validate_backup() passes and we reach the guard.
+        good_db = _make_sqlite(tmp_path / "src1.db")
+        malicious = tmp_path / "slip.zip"
+        with zipfile.ZipFile(malicious, "w") as zf:
+            zf.write(good_db, "pos.db")
+            zf.writestr("../evil.txt", "pwned")
+
+        with pytest.raises(ValueError, match="rejet"):
+            backup.restore_backup(malicious)
+
+        # The traversal payload must not have landed anywhere near the runtime.
+        assert not (tmp_runtime.parent / "evil.txt").exists()
+        assert not (tmp_runtime / "evil.txt").exists()
+
+    def test_rejects_absolute_path_entry(self, tmp_path, tmp_runtime):
+        good_db = _make_sqlite(tmp_path / "src2.db")
+        malicious = tmp_path / "abs.zip"
+        with zipfile.ZipFile(malicious, "w") as zf:
+            zf.write(good_db, "pos.db")
+            zf.writestr("C:/Windows/Temp/evil.txt", "pwned")
+        with pytest.raises(ValueError, match="rejet"):
+            backup.restore_backup(malicious)
+
+    def test_rejects_unexpected_entry(self, tmp_path, tmp_runtime):
+        good_db = _make_sqlite(tmp_path / "src3.db")
+        malicious = tmp_path / "unexpected.zip"
+        with zipfile.ZipFile(malicious, "w") as zf:
+            zf.write(good_db, "pos.db")
+            zf.writestr("secrets/steal.txt", "x")
+        with pytest.raises(ValueError, match="rejet"):
+            backup.restore_backup(malicious)
+
 
 class TestCleanup:
     def test_keeps_n_newest(self, tmp_runtime):
@@ -125,3 +174,21 @@ class TestCleanup:
         assert removed == 2
         remaining = list(backup_dir.glob("backup_*.zip"))
         assert len(remaining) == 3
+
+    def test_create_backup_auto_prunes_to_retention(self, tmp_runtime):
+        """create_backup() wires in retention: >14 backups get pruned to 14."""
+        backup_dir = tmp_runtime / "backups"
+        backup_dir.mkdir(exist_ok=True)
+        # Seed 14 older dummy backups with distinct (older) timestamps.
+        for day in range(1, 15):
+            (backup_dir / f"backup_202601{day:02d}_000000.zip").write_text("x")
+        assert len(list(backup_dir.glob("backup_*.zip"))) == 14
+
+        # Creating a 15th backup must trigger retention and stay at 14.
+        new_zip = backup.create_backup()
+        remaining = list(backup_dir.glob("backup_*.zip"))
+        assert len(remaining) == 14
+        assert new_zip.exists()
+        assert new_zip.name in {p.name for p in remaining}
+        # The single oldest dummy is the one that got pruned.
+        assert not (backup_dir / "backup_20260101_000000.zip").exists()

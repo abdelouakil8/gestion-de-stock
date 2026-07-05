@@ -701,13 +701,23 @@ class CheckoutScreen(QWidget):
         self.pay_button.setEnabled(True)
         show_error(self, err.message)
 
-    def _print_receipt(self, sale: dict, pdf: bytes, payment: dict, customer_name: str | None) -> None:
+    def _print_receipt(
+        self, sale: dict, pdf: bytes, payment: dict, customer_name: str | None
+    ) -> None:
         """Save the PDF and send it to the configured printer (Réglages)."""
-        from services import printing, escpos_printer
-        
+        from services import escpos_printer, printing
+
         printer_name = printing.get_selected_printer()
-        store_name = self.window().store["name"] if hasattr(self.window(), "store") else "Boutique"
-        settings = self.window().store.get("settings", {}) if hasattr(self.window(), "store") else {}
+        store_name = (
+            self.window().store["name"]
+            if hasattr(self.window(), "store")
+            else "Boutique"
+        )
+        settings = (
+            self.window().store.get("settings", {})
+            if hasattr(self.window(), "store")
+            else {}
+        )
 
         if printer_name and escpos_printer.print_receipt_escpos(
             sale, printer_name, settings, store_name, customer_name, payment["method"]

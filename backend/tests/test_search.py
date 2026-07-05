@@ -267,9 +267,7 @@ def test_product_search_fuzzy_typo_fallback(client):
     store = make_store(client)
     make_product(client, store, "Yaourt")
     # Exact spelling works.
-    assert [p["name"] for p in search_products(client, store, q="yaourt")] == [
-        "Yaourt"
-    ]
+    assert [p["name"] for p in search_products(client, store, q="yaourt")] == ["Yaourt"]
     # Transposition "yauort" is caught by the fuzzy fallback.
     fuzzy = [p["name"] for p in search_products(client, store, q="yauort")]
     assert "Yaourt" in fuzzy

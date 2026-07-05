@@ -78,7 +78,12 @@ class SupplierDialog(ModalDialog):
         else:
             run_api(
                 lambda: self.api.create_supplier(
-                    {"store_id": self.store_id, "name": name, "phone": phone, "note": note}
+                    {
+                        "store_id": self.store_id,
+                        "name": name,
+                        "phone": phone,
+                        "note": note,
+                    }
                 ),
                 self._done,
                 self._err,

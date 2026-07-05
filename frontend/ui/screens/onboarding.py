@@ -37,29 +37,29 @@ class OnboardingWizard(QDialog):
         )
         brand_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(brand_icon)
-        
+
         title = QLabel(strings.ONBOARDING_WELCOME)
         title.setObjectName("ScreenTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
-        
+
         desc = QLabel(strings.ONBOARDING_DESC)
         desc.setWordWrap(True)
         desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(desc)
-        
+
         layout.addSpacing(SPACING["md"])
 
         # PIN Form
         prompt = QLabel(strings.ONBOARDING_PIN_PROMPT)
         layout.addWidget(prompt)
-        
+
         self.pin_input = QLineEdit()
         self.pin_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.pin_input.setPlaceholderText(strings.LOGIN_PLACEHOLDER)
         self.pin_input.returnPressed.connect(self._submit)
         layout.addWidget(self.pin_input)
-        
+
         self.pin_confirm = QLineEdit()
         self.pin_confirm.setEchoMode(QLineEdit.EchoMode.Password)
         self.pin_confirm.setPlaceholderText(strings.ONBOARDING_PIN_CONFIRM)
@@ -81,18 +81,18 @@ class OnboardingWizard(QDialog):
     def _submit(self) -> None:
         pin = self.pin_input.text().strip()
         confirm = self.pin_confirm.text().strip()
-        
+
         if not pin:
             self.feedback.setText(strings.ONBOARDING_ERR_EMPTY)
             return
-            
+
         if pin != confirm:
             self.feedback.setText(strings.ONBOARDING_ERR_MISMATCH)
             return
-            
+
         self.submit_button.setEnabled(False)
         self.feedback.setText("")
-        
+
         run_api(
             lambda: self.api.set_initial_pin(pin),
             lambda _: self._on_success(pin),
