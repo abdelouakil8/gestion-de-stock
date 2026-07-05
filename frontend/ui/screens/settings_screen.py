@@ -459,9 +459,14 @@ class SettingsScreen(QWidget):
     # ---------------------------------------------------------- actions
     
     def _start_tour(self) -> None:
-        from ui.screens.feature_tour import FeatureTourDialog
-        dialog = FeatureTourDialog(self)
-        dialog.exec()
+        from ui.screens.feature_tour import FeatureTour
+
+        window = self.window()
+        if not hasattr(window, "_nav_buttons"):
+            return  # not hosted in the main window (defensive)
+        # Keep a reference on the window so the modeless tour isn't GC'd.
+        window._feature_tour = FeatureTour(window)
+        window._feature_tour.start()
 
     # ------------------------------------------------------------- printer
 
@@ -544,7 +549,19 @@ class SettingsScreen(QWidget):
             app.setStyleSheet(render_qss())
             
         if old_lang != new_lang:
-            show_info(self, strings.SETTINGS_RESTART_REQUIRED)
+            from ui.i18n import apply_language
+            apply_language(new_lang)
+            
+            main_win = self.window()
+            if main_win:
+                from ui.screens.main_window import MainWindow
+                new_window = MainWindow(self.api, main_win.store)
+                new_window.navigate(new_window.settings_screen)
+                
+                app._main_window = new_window  # Keep reference to prevent GC
+                new_window.show()
+                main_win.close()
+                main_win.deleteLater()
         else:
             show_toast(self, strings.SETTINGS_SAVED_TOAST)
 

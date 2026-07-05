@@ -10,7 +10,7 @@ the pattern is forward-compatible with PostgreSQL row-level locking).
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import insert, select, update
 from sqlalchemy.orm import Session
 
 from app.models.sale_sequence import SaleSequence
@@ -21,21 +21,38 @@ def allocate_invoice_number(db: Session, store_id: UUID) -> int:
 
     Creates the sequence row on first use. Returns the allocated number.
     Does NOT commit — the caller (finalize_sale) commits the whole tx.
+
+    The increment is keyed on the natural business key (store_id, year), NOT
+    on the surrogate ``id``. Keeping the surrogate id out of the WHERE clause
+    makes this immune to any id-serialization drift in the stored row (a
+    legacy row could carry a dashed UUID string while the ORM binds the bare
+    hex form — an id-keyed UPDATE would then silently match 0 rows and raise
+    StaleDataError). SQLite serializes writers, so the read-modify-write below
+    is race-safe; the pattern ports cleanly to PostgreSQL row locking later.
     """
     year = datetime.now(UTC).year
 
-    seq = db.scalar(
-        select(SaleSequence).where(
+    updated = db.execute(
+        update(SaleSequence)
+        .where(
+            SaleSequence.store_id == store_id,
+            SaleSequence.year == year,
+        )
+        .values(last_number=SaleSequence.last_number + 1)
+    )
+
+    if updated.rowcount == 0:
+        # First invoice of the year for this store — create the counter row.
+        db.execute(
+            insert(SaleSequence).values(
+                id=uuid4(), store_id=store_id, year=year, last_number=1
+            )
+        )
+        return 1
+
+    return db.scalar(
+        select(SaleSequence.last_number).where(
             SaleSequence.store_id == store_id,
             SaleSequence.year == year,
         )
     )
-
-    if seq is None:
-        seq = SaleSequence(id=uuid4(), store_id=store_id, year=year, last_number=0)
-        db.add(seq)
-        db.flush()
-
-    seq.last_number += 1
-    db.flush()
-    return seq.last_number

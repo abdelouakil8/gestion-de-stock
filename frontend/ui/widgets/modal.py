@@ -97,6 +97,26 @@ class ModalDialog(QDialog):
         target = min(holder.sizeHint().height(), max(160, cap - chrome))
         self._scroll.setMinimumHeight(target)
         self.adjustSize()
+        self._keep_on_screen()
+
+    def _keep_on_screen(self) -> None:
+        """Keep the whole dialog on-screen after it grows.
+
+        adjustSize() expands the window downward from its top-left, so
+        revealing a section (the partial-payment block…) could push the
+        confirm buttons under the taskbar — the operator then had to drag the
+        window up to reach them. Re-center on the screen and clamp the top so
+        every control stays reachable (the scroll area takes over if the
+        content is taller than the screen)."""
+        screen = self.screen() or QApplication.primaryScreen()
+        if screen is None:
+            return
+        available = screen.availableGeometry()
+        frame = self.frameGeometry()
+        frame.moveCenter(available.center())
+        if frame.top() < available.top():
+            frame.moveTop(available.top())
+        self.move(frame.topLeft())
 
 
 def show_error(parent, message: str, title: str = "") -> None:

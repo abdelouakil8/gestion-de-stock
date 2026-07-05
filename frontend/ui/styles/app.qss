@@ -117,6 +117,13 @@ QWidget {
 /* Tone variants — a non-zero credit balance must be impossible to miss. */
 #StatCardValue[tone="danger"] { color: $danger; }
 #StatCardValue[tone="success"] { color: $success; }
+/* Per-period revenue (evolution strip): between value and section title. */
+#PeriodRevenue {
+    background: transparent;
+    color: $text;
+    font-size: $font_lg;
+    font-weight: 700;
+}
 #SectionTitle {
     background: transparent;
     font-size: $font_lg;
@@ -331,24 +338,29 @@ QPushButton#Pay:hover { background: $primary_hover; }
 QPushButton#Pay:pressed { background: $primary_pressed; }
 QPushButton#Pay:disabled { background: $border; border-color: $border; color: $surface; }
 
-/* Segmented control (price levels) */
-#Segment {
-    background: transparent;
+/* Segmented control (price levels) — iOS-style pill track: a sunken rounded
+   container with the selected option as a filled pill. Robust: no per-button
+   border tricks, so it always reads as one coordinated control. */
+#SegmentGroup {
+    background: $surface_sunken;
     border: 1px solid $border;
+    border-radius: $radius_md;
+}
+#SegmentPill {
+    background: transparent;
+    border: none;
     color: $text_secondary;
-    padding: 3px 10px;
-    min-height: 18px;
+    padding: 4px 9px;
+    min-height: 20px;
     font-size: $font_sm;
     font-weight: 600;
     border-radius: $radius_sm;
 }
-#Segment:hover { border-color: $primary; color: $primary; background: $primary_subtle; }
-#Segment:checked {
-    background: $primary;
-    border-color: $primary;
-    color: $on_primary;
-}
-#Segment:focus { border: 2px solid $focus_ring; padding: 2px 9px; }
+#SegmentPill:hover { color: $primary; background: $primary_subtle; }
+#SegmentPill:checked { background: $primary; color: $on_primary; }
+#SegmentPill:checked:hover { background: $primary_hover; color: $on_primary; }
+#SegmentPill:focus { background: $primary_subtle; color: $primary; }
+#SegmentPill:checked:focus { background: $primary; color: $on_primary; }
 
 /* Accent swatch buttons (Réglages) */
 #Swatch {
@@ -478,8 +490,34 @@ QLabel#ScreenTitle { font-size: $font_title; font-weight: 700; }
 QLabel#DialogTitle { font-size: $font_lg; font-weight: 700; }
 QLabel#FieldError { color: $danger_text; font-size: $font_sm; font-weight: 600; }
 QLabel#FieldHint { color: $text_muted; font-size: $font_sm; }
-QDialog { background: $background; }
+QDialog { background: $surface; border-radius: $radius_lg; }
+QDialog > QWidget { background: transparent; }
+QDialog > QScrollArea > QWidget > QWidget { background: transparent; }
 QMessageBox QLabel { font-size: $font_base; }
+
+/* ---- Payment dialog: total band + selectable mode cards ---- */
+#PayTotalCard {
+    background: $primary_subtle;
+    border: 1px solid $primary_subtle_hover;
+    border-radius: $radius_md;
+}
+#PayTotalCard QLabel { background: transparent; }
+/* Fully clickable mode option (radio + title + hint) */
+#OptionCard {
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: $radius_md;
+}
+#OptionCard:hover { border-color: $primary; }
+#OptionCard[selected="true"] {
+    border-color: $primary;
+    background: $primary_subtle;
+}
+#OptionCard QLabel { background: transparent; }
+#OptionTitle { font-size: $font_md; font-weight: 600; color: $text; }
+#RemainingHint { color: $text_secondary; font-size: $font_sm; font-weight: 600; }
+#HDivider { background: $border_light; border: none; }
+#MoneyInput { font-size: $font_md; font-weight: 700; min-height: 30px; }
 
 QToolTip {
     background: $neutral_900;
@@ -489,6 +527,21 @@ QToolTip {
     padding: 5px 8px;
     font-size: $font_sm;
 }
+
+/* Guided tour callout (coach marks over the live app) */
+#TourCallout {
+    background: $surface;
+    border: 1px solid $border_strong;
+    border-radius: $radius_lg;
+}
+#TourCallout QLabel { background: transparent; }
+#TourStepLabel {
+    color: $primary;
+    font-size: $font_caption;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+#TourTitle { font-size: $font_lg; font-weight: 700; color: $text; }
 
 /* Toasts (non-blocking success/info feedback) */
 #Toast {

@@ -1,6 +1,8 @@
 """Segmented control — the 3-state price-level selector (Détail / Gros /
-Super gros). Pure QPushButtons in an exclusive group; the server resolves
-the actual price, this widget only reports the chosen level."""
+Super gros). An iOS-style pill track: a sunken rounded container holds the
+options, and the chosen one lights up as a filled pill. Pure QPushButtons in
+an exclusive group; the server resolves the actual price, this widget only
+reports the chosen level."""
 
 from collections.abc import Callable
 
@@ -25,6 +27,10 @@ class PriceLevelSelector(QWidget):
         allow_manual: bool = False,
     ) -> None:
         super().__init__(parent)
+        # The whole widget is the sunken "track"; WA_StyledBackground lets the
+        # #SegmentGroup QSS background/border paint on this plain QWidget.
+        self.setObjectName("SegmentGroup")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._on_change = on_change
         self._allow_manual = allow_manual
         # Instance-local level list so the module-level LEVELS constant that
@@ -33,8 +39,8 @@ class PriceLevelSelector(QWidget):
         if allow_manual:
             self._levels.append(MANUAL_LEVEL)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setContentsMargins(3, 3, 3, 3)
+        layout.setSpacing(3)
 
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
@@ -45,7 +51,8 @@ class PriceLevelSelector(QWidget):
             else:
                 label = strings.PRICE_LEVEL_LABELS[value]
             button = QPushButton(label)
-            button.setObjectName("Segment")
+            button.setObjectName("SegmentPill")
+            button.setToolTip(label)  # full label on hover if a tight cell clips
             button.setCheckable(True)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             self._group.addButton(button)

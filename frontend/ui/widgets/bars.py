@@ -52,8 +52,14 @@ class BarChart(QWidget):
         if self.layoutDirection() == Qt.LayoutDirection.RightToLeft:
             entries.reverse()
 
+        # The app font is defined in PIXELS by the stylesheet, so pointSizeF()
+        # is -1 here; derive the smaller label font from pixelSize to stay
+        # consistent (and never feed a non-positive size to QFont).
         small = QFont(self.font())
-        small.setPointSizeF(max(7.0, self.font().pointSizeF() - 1.5))
+        if self.font().pixelSize() > 0:
+            small.setPixelSize(max(9, self.font().pixelSize() - 2))
+        else:
+            small.setPointSizeF(max(7.0, self.font().pointSizeF() - 1.5))
 
         for index, (label, value) in enumerate(entries):
             x = start_x + index * (bar_w + gap)

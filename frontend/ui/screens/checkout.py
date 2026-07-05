@@ -52,6 +52,21 @@ _PRICE_FIELDS = {
     "super_gros": "price_super_gros",
 }
 
+# One control height for every editable cell so a cart row reads as a single
+# aligned band instead of a jumble of differently-sized widgets.
+_CELL_CONTROL_H = 34
+
+
+def _centered_cell(widget: QWidget, left: int = SPACING["xs"], right: int = SPACING["xs"]) -> QWidget:
+    """Wrap a control so the table centers it vertically in the (taller) row
+    instead of stretching it to the full cell height."""
+    holder = QWidget()
+    layout = QHBoxLayout(holder)
+    layout.setContentsMargins(left, 0, right, 0)
+    layout.setSpacing(0)
+    layout.addWidget(widget)
+    return holder
+
 
 class CartLine:
     def __init__(self, product: dict) -> None:
@@ -212,18 +227,28 @@ class CheckoutScreen(QWidget):
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for column, width in (
-            (1, 130),  # Conditionnement ("Carton (×24)")
-            (2, 300),  # 4-state level selector (Détail/Gros/Super gros/Manuel)
-            (3, 110),  # Prix unitaire
-            (4, 72),  # Qté
-            (5, 100),  # Remise
-            (6, 110),  # Total
-            (7, 40),  # remove
+            (1, 114),  # Conditionnement ("Carton (×24)")
+            (2, 264),  # 4-state level selector, a compact connected control
+            (3, 96),  # Prix unitaire
+            (4, 62),  # Qté
+            (5, 94),  # Remise
+            (6, 98),  # Total
+            (7, 42),  # remove
         ):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
             self.table.setColumnWidth(column, width)
+        # Numeric headers align with their right-aligned values; Qté centers.
+        for column in (3, 5, 6):
+            item = self.table.horizontalHeaderItem(column)
+            if item is not None:
+                item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                )
+        qty_header = self.table.horizontalHeaderItem(4)
+        if qty_header is not None:
+            qty_header.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(THUMB_SIZES["cart"] + 12)
+        self.table.verticalHeader().setDefaultSectionSize(THUMB_SIZES["cart"] + 18)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         # Same table language as every DataTable: no grid, alternating rows.
@@ -405,6 +430,7 @@ class CheckoutScreen(QWidget):
             cell_layout.addWidget(thumb)
             name = QLabel(line.product["name"])
             name.setStyleSheet("font-weight: 600; background: transparent;")
+            name.setToolTip(line.product["name"])  # full name if the cell clips
             cell_layout.addWidget(name, stretch=1)
             self.table.setCellWidget(row, 0, product_cell)
 
@@ -426,7 +452,8 @@ class CheckoutScreen(QWidget):
                     self._on_packaging_changed(target, combo.currentData())
                 )
             )
-            self.table.setCellWidget(row, 1, packaging_combo)
+            packaging_combo.setFixedHeight(_CELL_CONTROL_H)
+            self.table.setCellWidget(row, 1, _centered_cell(packaging_combo))
 
             selector = PriceLevelSelector(
                 on_change=lambda level, target=line: self._on_level_changed(
@@ -435,9 +462,10 @@ class CheckoutScreen(QWidget):
                 level=line.level,
                 allow_manual=True,
             )
+            selector.setFixedHeight(_CELL_CONTROL_H)
             selector_holder = QWidget()
             holder_layout = QHBoxLayout(selector_holder)
-            holder_layout.setContentsMargins(SPACING["xs"], 0, SPACING["xs"], 0)
+            holder_layout.setContentsMargins(2, 0, 2, 0)
             holder_layout.addWidget(selector)
             holder_layout.addStretch(1)
             self.table.setCellWidget(row, 2, selector_holder)
@@ -447,6 +475,8 @@ class CheckoutScreen(QWidget):
             price_spin = QDoubleSpinBox()
             price_spin.setDecimals(2)
             price_spin.setMaximum(99_999_999.99)
+            price_spin.setMinimumWidth(88)
+            price_spin.setFixedHeight(_CELL_CONTROL_H)
             price_spin.setAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
@@ -454,20 +484,25 @@ class CheckoutScreen(QWidget):
                 lambda value, target=line: self._on_manual_price_changed(target, value)
             )
             line._price_spin = price_spin  # noqa: SLF001 (per-line cell handle)
-            self.table.setCellWidget(row, 3, price_spin)
+            self.table.setCellWidget(row, 3, _centered_cell(price_spin))
             self._sync_price_cell(line)
 
             qty = QSpinBox()
             qty.setRange(1, 1_000_000)
+            qty.setMinimumWidth(54)
+            qty.setFixedHeight(_CELL_CONTROL_H)
+            qty.setAlignment(Qt.AlignmentFlag.AlignCenter)
             qty.setValue(line.quantity)
             qty.valueChanged.connect(
                 lambda value, target=line: self._on_qty_changed(target, value)
             )
-            self.table.setCellWidget(row, 4, qty)
+            self.table.setCellWidget(row, 4, _centered_cell(qty))
 
             discount_spin = QDoubleSpinBox()
             discount_spin.setDecimals(2)
             discount_spin.setMaximum(99_999_999.99)
+            discount_spin.setMinimumWidth(86)
+            discount_spin.setFixedHeight(_CELL_CONTROL_H)
             discount_spin.setAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
@@ -476,7 +511,7 @@ class CheckoutScreen(QWidget):
             discount_spin.valueChanged.connect(
                 lambda value, target=line: self._on_discount_changed(target, value)
             )
-            self.table.setCellWidget(row, 5, discount_spin)
+            self.table.setCellWidget(row, 5, _centered_cell(discount_spin))
 
             total_item = QTableWidgetItem(fmt.fmt_money(line.total))
             total_item.setTextAlignment(

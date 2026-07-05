@@ -169,6 +169,21 @@ def main() -> int:
 
     smoke_test = bool(os.environ.get("POS_SMOKE_TEST"))
     if not smoke_test:  # automated checks skip the interactive PIN gate
+        from services import license
+        lic_path = license.find_license()
+        if lic_path:
+            try:
+                lic_info = license.verify_license(lic_path)
+                if lic_info.is_expired:
+                    QMessageBox.critical(None, strings.ERROR_TITLE, "Licence expirée.")
+                    return 0
+            except ValueError as e:
+                QMessageBox.critical(None, strings.ERROR_TITLE, str(e))
+                return 0
+        else:
+            QMessageBox.critical(None, strings.ERROR_TITLE, "Fichier de licence (license.lic) introuvable.")
+            return 0
+
         # Check if PIN is configured safely without triggering a 401 warning
         try:
             status_data = api.get_auth_status()

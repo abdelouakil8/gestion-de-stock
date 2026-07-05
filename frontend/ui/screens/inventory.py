@@ -667,12 +667,18 @@ class InventoryScreen(QWidget):
             strings.IMPORT_BUTTON,
         )
         import_button.clicked.connect(self._import_csv)
+        self.receive_button = QPushButton(
+            qta.icon("fa5s.arrow-down", color=NEUTRAL["600"]), "Réceptionner"
+        )
+        self.receive_button.clicked.connect(self._receive_stock)
+        
         # Error prevention: row-dependent actions stay disabled until a row
         # is selected instead of scolding with a dialog after the click.
         self.edit_button.setEnabled(False)
         self.archive_button.setEnabled(False)
+        self.receive_button.setEnabled(False)
         for button in (
-            new_button, import_button, self.edit_button, self.archive_button
+            new_button, import_button, self.receive_button, self.edit_button, self.archive_button
         ):
             toolbar.addWidget(button)
         layout.addLayout(toolbar)
@@ -887,6 +893,7 @@ class InventoryScreen(QWidget):
         has_selection = 0 <= self.table.selected_row() < len(self.visible_products)
         self.edit_button.setEnabled(has_selection)
         self.archive_button.setEnabled(has_selection)
+        self.receive_button.setEnabled(has_selection)
 
     def _selected_product(self) -> dict | None:
         row = self.table.selected_row()
@@ -950,6 +957,36 @@ class InventoryScreen(QWidget):
             lambda _: self.refresh(),
             lambda err: show_error(self, err.message),
         )
+
+    def _receive_stock(self) -> None:
+        product = self._selected_product()
+        if not product:
+            return
+        qty, ok = QInputDialog.getInt(
+            self,
+            "Réceptionner",
+            f"Quantité à ajouter pour {product['name']} :",
+            1, 1, 1000000
+        )
+        if ok and qty > 0:
+            # We fetch details first to get the full payload
+            run_api(
+                lambda: self.api.get_product_details(product["id"]),
+                lambda details: self._do_receive_stock(details, qty),
+                lambda err: show_error(self, err.message)
+            )
+
+    def _do_receive_stock(self, details: dict, added_qty: int) -> None:
+        details["stock_quantity"] += added_qty
+        run_api(
+            lambda: self.api.update_product(details["id"], details),
+            lambda _: self._on_receive_done(added_qty, details["name"]),
+            lambda err: show_error(self, err.message)
+        )
+        
+    def _on_receive_done(self, qty: int, name: str) -> None:
+        self.refresh()
+        show_toast(self, f"{qty} unités ajoutées à {name}.")
 
     def _import_csv(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

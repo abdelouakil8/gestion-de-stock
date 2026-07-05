@@ -1,15 +1,28 @@
-"""Feature tour dialog (In-App Help)."""
+"""Interactive guided tour — spotlight coach marks over the live app.
 
-import qtawesome as qta
-from PySide6.QtCore import Qt
+Instead of a static list of features, the tour dims the window, cuts a
+highlight "hole" around a real UI element (a sidebar entry, the search field,
+the pay button…), navigates between screens as it goes, and explains each
+step in a floating callout with Précédent / Suivant / Passer.
+
+Launched from Réglages ("Démarrer la visite"). Direction-agnostic: callout
+button order follows the app's RTL/LTR layout direction automatically.
+
+`FeatureTourDialog` is kept as a thin backward-compatible alias so any old
+caller (`FeatureTourDialog(parent).exec()`) still starts the new tour.
+"""
+
+from collections.abc import Callable
+
+from PySide6.QtCore import QEvent, QPoint, QRect, QRectF, Qt, QTimer
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
-    QDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
     QVBoxLayout,
     QWidget,
-    QScrollArea,
 )
 
 from ui import strings
@@ -17,72 +30,303 @@ from ui.styles import tokens
 from ui.styles.tokens import SPACING
 
 
-class FeatureTourDialog(QDialog):
-    """A simple dialog to introduce the application's features."""
+class _Step:
+    """One tour step: which screen to show and which widget to spotlight."""
+
+    def __init__(
+        self,
+        title: str,
+        desc: str,
+        navigate: Callable | None = None,
+        target: Callable | None = None,
+    ) -> None:
+        self.title = title
+        self.desc = desc
+        self.navigate = navigate  # (main) -> screen widget to switch to, or None
+        self.target = target  # (main) -> widget to spotlight, or None (centered)
+
+
+class FeatureTour(QWidget):
+    """Full-window spotlight overlay that walks the operator through the app."""
+
+    def __init__(self, main_window) -> None:
+        central = main_window.centralWidget()
+        super().__init__(central)
+        self._main = main_window
+        self._central = central
+        self._hole: QRect | None = None
+        self._index = 0
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._steps = self._build_steps()
+        self._build_callout()
+        self._main.installEventFilter(self)
+
+    # ------------------------------------------------------------ construction
+
+    def _build_callout(self) -> None:
+        self._callout = QFrame(self)
+        self._callout.setObjectName("TourCallout")
+        self._callout.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        layout = QVBoxLayout(self._callout)
+        layout.setContentsMargins(
+            SPACING["lg"], SPACING["lg"], SPACING["lg"], SPACING["md"]
+        )
+        layout.setSpacing(SPACING["sm"])
+
+        self._step_label = QLabel()
+        self._step_label.setObjectName("TourStepLabel")
+        layout.addWidget(self._step_label)
+
+        self._title_label = QLabel()
+        self._title_label.setObjectName("TourTitle")
+        self._title_label.setWordWrap(True)
+        layout.addWidget(self._title_label)
+
+        self._desc_label = QLabel()
+        self._desc_label.setObjectName("Muted")
+        self._desc_label.setWordWrap(True)
+        layout.addWidget(self._desc_label)
+        layout.addSpacing(SPACING["xs"])
+
+        buttons = QHBoxLayout()
+        buttons.setSpacing(SPACING["sm"])
+        self._skip_btn = QPushButton(strings.FEATURE_TOUR_SKIP)
+        self._skip_btn.setObjectName("Ghost")
+        self._skip_btn.clicked.connect(self.finish)
+        buttons.addWidget(self._skip_btn)
+        buttons.addStretch(1)
+        self._prev_btn = QPushButton(strings.FEATURE_TOUR_PREV)
+        self._prev_btn.clicked.connect(self._prev)
+        buttons.addWidget(self._prev_btn)
+        self._next_btn = QPushButton(strings.FEATURE_TOUR_NEXT)
+        self._next_btn.setObjectName("Primary")
+        self._next_btn.setDefault(True)
+        self._next_btn.clicked.connect(self._next)
+        buttons.addWidget(self._next_btn)
+        layout.addLayout(buttons)
+
+        self._callout.setFixedWidth(360)
+
+    def _build_steps(self) -> list[_Step]:
+        # Sidebar order: 0 Caisse · 1 Stock · 2 Clients · 3 Ventes ·
+        #                4 Fournisseurs · 5 Statistiques · 6 Alertes · 7 Réglages
+        return [
+            _Step(strings.FEATURE_TOUR_WELCOME, strings.FEATURE_TOUR_WELCOME_DESC),
+            _Step(
+                strings.FEATURE_TOUR_CHECKOUT_TITLE,
+                strings.FEATURE_TOUR_NAV_CAISSE_DESC,
+                navigate=lambda m: m.checkout,
+                target=lambda m: m._nav_buttons[0],
+            ),
+            _Step(
+                strings.FEATURE_TOUR_SEARCH_TITLE,
+                strings.FEATURE_TOUR_SEARCH_DESC,
+                navigate=lambda m: m.checkout,
+                target=lambda m: m.checkout.search,
+            ),
+            _Step(
+                strings.FEATURE_TOUR_PAY_TITLE,
+                strings.FEATURE_TOUR_PAY_DESC,
+                navigate=lambda m: m.checkout,
+                target=lambda m: m.checkout.pay_button,
+            ),
+            _Step(
+                strings.FEATURE_TOUR_INVENTORY_TITLE,
+                strings.FEATURE_TOUR_INVENTORY_DESC,
+                navigate=lambda m: m.inventory,
+                target=lambda m: m._nav_buttons[1],
+            ),
+            _Step(
+                strings.FEATURE_TOUR_CUSTOMERS_TITLE,
+                strings.FEATURE_TOUR_CUSTOMERS_DESC,
+                navigate=lambda m: m.customers,
+                target=lambda m: m._nav_buttons[2],
+            ),
+            _Step(
+                strings.FEATURE_TOUR_STATS_TITLE,
+                strings.FEATURE_TOUR_STATS_DESC,
+                navigate=lambda m: m.statistics,
+                target=lambda m: m._nav_buttons[5],
+            ),
+            _Step(
+                strings.FEATURE_TOUR_ALERTS_TITLE,
+                strings.FEATURE_TOUR_ALERTS_DESC,
+                navigate=lambda m: m.alerts,
+                target=lambda m: m._nav_buttons[6],
+            ),
+            _Step(
+                strings.FEATURE_TOUR_SETTINGS_TITLE,
+                strings.FEATURE_TOUR_SETTINGS_DESC,
+                navigate=lambda m: m.settings_screen,
+                target=lambda m: m._nav_buttons[7],
+            ),
+            _Step(
+                strings.FEATURE_TOUR_DONE_TITLE,
+                strings.FEATURE_TOUR_DONE_DESC,
+                navigate=lambda m: m.checkout,
+            ),
+        ]
+
+    # ------------------------------------------------------------- lifecycle
+
+    def start(self) -> None:
+        self.setGeometry(self._central.rect())
+        self.show()
+        self.raise_()
+        self.setFocus()
+        self._index = 0
+        self._render_current()
+
+    def finish(self) -> None:
+        self._main.removeEventFilter(self)
+        self.hide()
+        self.deleteLater()
+
+    def _next(self) -> None:
+        if self._index >= len(self._steps) - 1:
+            self.finish()
+            return
+        self._index += 1
+        self._render_current()
+
+    def _prev(self) -> None:
+        if self._index > 0:
+            self._index -= 1
+            self._render_current()
+
+    def _render_current(self) -> None:
+        step = self._steps[self._index]
+        if step.navigate is not None:
+            screen = step.navigate(self._main)
+            if screen is not None:
+                self._main.navigate(screen)
+        # Give the just-navigated screen a beat to lay out before we measure
+        # the target's on-screen geometry.
+        QTimer.singleShot(60, self._apply_step)
+
+    def _apply_step(self) -> None:
+        if not self.isVisible():
+            return
+        self.setGeometry(self._central.rect())
+        self.raise_()
+        step = self._steps[self._index]
+        total = len(self._steps)
+        self._step_label.setText(
+            strings.FEATURE_TOUR_STEP.format(n=self._index + 1, total=total)
+        )
+        self._title_label.setText(step.title)
+        self._desc_label.setText(step.desc)
+        is_last = self._index >= total - 1
+        self._prev_btn.setVisible(self._index > 0)
+        self._skip_btn.setVisible(not is_last)
+        self._next_btn.setText(
+            strings.FEATURE_TOUR_FINISH if is_last else strings.FEATURE_TOUR_NEXT
+        )
+
+        target = step.target(self._main) if step.target is not None else None
+        self._hole = self._target_rect(target)
+        self._position_callout()
+        self.update()
+
+    # --------------------------------------------------------------- geometry
+
+    def _target_rect(self, target) -> QRect | None:
+        if target is None or not target.isVisible() or target.width() <= 0:
+            return None
+        top_left = self.mapFromGlobal(target.mapToGlobal(QPoint(0, 0)))
+        pad = 6
+        return QRect(
+            top_left.x() - pad,
+            top_left.y() - pad,
+            target.width() + 2 * pad,
+            target.height() + 2 * pad,
+        )
+
+    def _position_callout(self) -> None:
+        self._callout.adjustSize()
+        width, height = self._callout.width(), self._callout.height()
+        area = self.rect()
+        gap = 14
+
+        if self._hole is None:
+            x = area.center().x() - width // 2
+            y = area.center().y() - height // 2
+        else:
+            hole = self._hole
+            if hole.bottom() + gap + height <= area.bottom():
+                y = hole.bottom() + gap
+                x = hole.left()
+            elif hole.top() - gap - height >= area.top():
+                y = hole.top() - gap - height
+                x = hole.left()
+            elif hole.right() + gap + width <= area.right():
+                x = hole.right() + gap
+                y = hole.top()
+            else:
+                x = hole.left() - gap - width
+                y = hole.top()
+
+        x = max(area.left() + gap, min(x, area.right() - width - gap))
+        y = max(area.top() + gap, min(y, area.bottom() - height - gap))
+        self._callout.move(x, y)
+
+    # ------------------------------------------------------------------ paint
+
+    def paintEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        overlay = QPainterPath()
+        overlay.addRect(QRectF(self.rect()))
+        if self._hole is not None:
+            hole = QPainterPath()
+            hole.addRoundedRect(QRectF(self._hole), 10, 10)
+            overlay = overlay.subtracted(hole)
+        painter.fillPath(overlay, QColor(15, 23, 42, 200))
+        if self._hole is not None:
+            painter.setPen(QPen(QColor(tokens.CURRENT_ACCENT), 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(QRectF(self._hole), 10, 10)
+        painter.end()
+
+    # ----------------------------------------------------------------- events
+
+    def eventFilter(self, obj, event) -> bool:
+        if obj is self._main and event.type() in (
+            QEvent.Type.Resize,
+            QEvent.Type.Move,
+        ):
+            if self.isVisible():
+                self.setGeometry(self._central.rect())
+                self._apply_step()
+        return super().eventFilter(obj, event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        key = event.key()
+        if key == Qt.Key.Key_Escape:
+            self.finish()
+        elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Right):
+            self._next()
+        elif key == Qt.Key.Key_Left:
+            self._prev()
+        else:
+            super().keyPressEvent(event)
+
+
+class FeatureTourDialog:
+    """Backward-compatible shim: old callers did FeatureTourDialog(parent).exec().
+
+    We now launch the live spotlight tour on the main window instead of a
+    static dialog. exec() returns immediately (the tour is modeless).
+    """
 
     def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self.setWindowTitle(strings.FEATURE_TOUR_TITLE)
-        self.setMinimumWidth(600)
-        self.setMinimumHeight(500)
+        self._parent = parent
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(*[SPACING["xl"]] * 4)
-        layout.setSpacing(SPACING["lg"])
-
-        title = QLabel(strings.FEATURE_TOUR_WELCOME)
-        title.setObjectName("ScreenTitle")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        
-        container = QWidget()
-        features_layout = QVBoxLayout(container)
-        features_layout.setSpacing(SPACING["md"])
-        
-        def add_feature(icon_name: str, name: str, desc: str) -> None:
-            row = QHBoxLayout()
-            row.setSpacing(SPACING["md"])
-            
-            icon = QLabel()
-            icon.setPixmap(qta.icon(icon_name, color=tokens.CURRENT_ACCENT).pixmap(32, 32))
-            icon.setAlignment(Qt.AlignmentFlag.AlignTop)
-            row.addWidget(icon)
-            
-            text_layout = QVBoxLayout()
-            text_layout.setSpacing(SPACING["xs"])
-            
-            title_lbl = QLabel(name)
-            title_lbl.setStyleSheet("font-weight: bold;")
-            text_layout.addWidget(title_lbl)
-            
-            desc_lbl = QLabel(desc)
-            desc_lbl.setWordWrap(True)
-            desc_lbl.setObjectName("Muted")
-            text_layout.addWidget(desc_lbl)
-            
-            row.addLayout(text_layout)
-            row.addStretch(1)
-            features_layout.addLayout(row)
-
-        add_feature("fa5s.cash-register", strings.FEATURE_TOUR_CHECKOUT_TITLE, strings.FEATURE_TOUR_CHECKOUT_DESC)
-        add_feature("fa5s.boxes", strings.FEATURE_TOUR_INVENTORY_TITLE, strings.FEATURE_TOUR_INVENTORY_DESC)
-        add_feature("fa5s.chart-line", strings.FEATURE_TOUR_STATS_TITLE, strings.FEATURE_TOUR_STATS_DESC)
-        add_feature("fa5s.bell", strings.FEATURE_TOUR_ALERTS_TITLE, strings.FEATURE_TOUR_ALERTS_DESC)
-        add_feature("fa5s.print", strings.FEATURE_TOUR_PRINT_TITLE, strings.FEATURE_TOUR_PRINT_DESC)
-        
-        features_layout.addStretch(1)
-        scroll.setWidget(container)
-        layout.addWidget(scroll, stretch=1)
-
-        close_btn = QPushButton(strings.ACTION_CLOSE)
-        close_btn.setObjectName("Primary")
-        close_btn.clicked.connect(self.accept)
-        
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch(1)
-        btn_layout.addWidget(close_btn)
-        layout.addLayout(btn_layout)
+    def exec(self) -> int:
+        window = self._parent.window() if self._parent is not None else None
+        if window is None or not hasattr(window, "_nav_buttons"):
+            return 0
+        tour = FeatureTour(window)
+        window._feature_tour = tour  # keep a reference alive during the tour
+        tour.start()
+        return 1

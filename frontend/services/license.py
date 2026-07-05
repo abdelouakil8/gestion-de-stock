@@ -18,13 +18,13 @@ except ImportError:
     InvalidSignature = None
 
 _PUBLIC_KEY_PEM = b"""-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5mN01r8cPtQC20cK7gGd
-7HMsrnvHwnXydRls1G9nd3GguOlkyZJy3FSdCfCjJ4hCAevJ9yPMhms33JvVCvdo
-ZEZCNyTNVpbe4P2VEX7lSGkN57zR6GkjCTlXAAhBXHWRJ6vLnDvMNt0FxUnZuOXH
-3Pp4h4CevhXXylZ3NrW+hEvBKAUAalpl62mv7LNsEwG9iTeHCZ825Rzlsq0js/Tc
-27dViMYLhTsM2uhZ3d6b/SP62hWO7UDmWtev5eWGQxLeYcR2cMYCzBThx/poDKWH
-N5xiJxMOSPjwBK2Y1JkToBAufthm7K7cx1wxT++LtSRL53u8Qp8QLCUxR6kqg+cl
-YQIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsCLTtTIOwkbdAhfoQXoM
+5CtUXHGUUCA2vxi7GB+WWkgOg7GxUg/gQ7gp0J3e2ZljvmQh5f6rlgfUag0exhzU
+zRuqcUHnrXUNka/t8CAYXYzU/GXNNHzS1eyQr9VEQJjMhegIHgaaKROMYenNnYtS
+2oydLEqcktZ6qhBXboAqi8gMpE1LREsOuNtblsT2vUQLImQdosRCKhRu8Xlo138x
+kHMLXqYlMDlKg2U8ZSXwoOyuj2nvN6pcgWhz2KbXP3jxhuqIdZcHbUCPn9UICStT
+2t+l89ogY472M/ykKqc8X+COIBup8UbMsnYaJW47+O3W5aSAdKm144Y61ePOkcIw
+QwIDAQAB
 -----END PUBLIC KEY-----"""
 
 
@@ -37,7 +37,11 @@ class LicenseInfo:
 
     @property
     def is_expired(self) -> bool:
-        return datetime.now(timezone.utc) > self.expires_at
+        now = datetime.now(timezone.utc)
+        expires = self.expires_at
+        if expires.tzinfo is None:
+            now = now.replace(tzinfo=None)
+        return now > expires
 
 
 def find_license() -> Path | None:
