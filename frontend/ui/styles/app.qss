@@ -362,6 +362,27 @@ QPushButton#Pay:disabled { background: $border; border-color: $border; color: $s
 #SegmentPill:focus { background: $primary_subtle; color: $primary; }
 #SegmentPill:checked:focus { background: $primary; color: $on_primary; }
 
+/* Unified date-range control (Statistiques toolbar): one bordered pill that
+   holds a calendar icon + the two dates + a separator, so the range reads as
+   a single intentional control instead of two loose dropdowns. */
+#DateRangeBox {
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: $radius_md;
+}
+#DateRangeBox:hover { border-color: $border_strong; }
+#DateRangeBox QLabel { background: transparent; }
+#RangeDate {
+    background: transparent;
+    border: none;
+    border-radius: $radius_sm;
+    padding: 4px 2px;
+    min-height: 24px;
+}
+#RangeDate:hover { border: none; }
+#RangeDate:focus { border: none; padding: 4px 2px; }
+#RangeDate::drop-down { border: none; width: 18px; }
+
 /* Accent swatch buttons (Réglages) */
 #Swatch {
     border: 2px solid transparent;

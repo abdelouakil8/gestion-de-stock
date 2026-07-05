@@ -16,6 +16,7 @@ from decimal import Decimal
 import qtawesome as qta
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QDateEdit,
     QFileDialog,
     QFrame,
@@ -31,7 +32,7 @@ from PySide6.QtWidgets import (
 from services.workers import run_api
 from ui import format as fmt
 from ui import strings
-from ui.styles.tokens import ICON_SIZES, RADIUS, SPACING, THUMB_SIZES
+from ui.styles.tokens import ICON_SIZES, NEUTRAL, RADIUS, SPACING, THUMB_SIZES
 from ui.widgets.badge import DeltaChip
 from ui.widgets.card import Card, SectionCard
 from ui.widgets.data_table import DataTable
@@ -304,8 +305,12 @@ class StatisticsScreen(QWidget):
 
     # --------------------------------------------------------------- build
 
-    def _build_header(self) -> QHBoxLayout:
-        header = QHBoxLayout()
+    def _build_header(self) -> QVBoxLayout:
+        box = QVBoxLayout()
+        box.setSpacing(SPACING["md"])
+
+        # Row 1 — title + export/refresh actions.
+        row1 = QHBoxLayout()
         title_box = QVBoxLayout()
         title_box.setSpacing(0)
         title = QLabel(strings.STATISTICS_TITLE)
@@ -314,33 +319,123 @@ class StatisticsScreen(QWidget):
         subtitle = QLabel(strings.STATS_SUBTITLE)
         subtitle.setObjectName("Muted")
         title_box.addWidget(subtitle)
-        header.addLayout(title_box)
-        header.addStretch(1)
-
-        header.addWidget(QLabel(strings.STATS_FROM))
-        self.date_from = QDateEdit(QDate.currentDate().addDays(-30))
-        self.date_from.setCalendarPopup(True)
-        header.addWidget(self.date_from)
-        header.addWidget(QLabel(strings.STATS_TO))
-        self.date_to = QDateEdit(QDate.currentDate())
-        self.date_to.setCalendarPopup(True)
-        header.addWidget(self.date_to)
+        row1.addLayout(title_box)
+        row1.addStretch(1)
 
         self.btn_export_pdf = QPushButton(strings.STATS_EXPORT_PDF)
         self.btn_export_pdf.setObjectName("Secondary")
         self.btn_export_pdf.clicked.connect(self.export_pdf)
-        header.addWidget(self.btn_export_pdf)
+        row1.addWidget(self.btn_export_pdf)
 
         self.btn_export_xlsx = QPushButton(strings.STATS_EXPORT_XLSX)
         self.btn_export_xlsx.setObjectName("Secondary")
         self.btn_export_xlsx.clicked.connect(self.export_xlsx)
-        header.addWidget(self.btn_export_xlsx)
+        row1.addWidget(self.btn_export_xlsx)
 
         refresh = QPushButton(strings.REFRESH)
         refresh.setObjectName("Primary")
         refresh.clicked.connect(self.refresh)
-        header.addWidget(refresh)
-        return header
+        row1.addWidget(refresh)
+        box.addLayout(row1)
+
+        # Row 2 — period filter toolbar: quick presets + a unified date range.
+        row2 = QHBoxLayout()
+        row2.addWidget(self._build_presets())
+        row2.addStretch(1)
+        row2.addWidget(self._build_date_range())
+        box.addLayout(row2)
+
+        # Default view = last 30 days, with its preset lit.
+        self._preset_buttons["30d"].setChecked(True)
+        return box
+
+    def _build_presets(self) -> QWidget:
+        group = QWidget()
+        group.setObjectName("SegmentGroup")
+        group.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        layout = QHBoxLayout(group)
+        layout.setContentsMargins(3, 3, 3, 3)
+        layout.setSpacing(3)
+        self._preset_group = QButtonGroup(self)
+        self._preset_group.setExclusive(True)
+        self._preset_buttons: dict[str, QPushButton] = {}
+        presets = [
+            ("today", strings.STATS_PRESET_TODAY),
+            ("7d", strings.STATS_PRESET_7D),
+            ("30d", strings.STATS_PRESET_30D),
+            ("month", strings.STATS_THIS_MONTH),
+            ("year", strings.STATS_THIS_YEAR),
+        ]
+        for key, label in presets:
+            button = QPushButton(label)
+            button.setObjectName("SegmentPill")
+            button.setCheckable(True)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.clicked.connect(lambda _=False, k=key: self._apply_preset(k))
+            self._preset_group.addButton(button)
+            layout.addWidget(button)
+            self._preset_buttons[key] = button
+        return group
+
+    def _build_date_range(self) -> QWidget:
+        box = QWidget()
+        box.setObjectName("DateRangeBox")
+        box.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        layout = QHBoxLayout(box)
+        layout.setContentsMargins(SPACING["sm"], 2, SPACING["sm"], 2)
+        layout.setSpacing(SPACING["xs"])
+
+        icon = QLabel()
+        icon.setPixmap(
+            qta.icon("fa5s.calendar-alt", color=NEUTRAL["500"]).pixmap(15, 15)
+        )
+        layout.addWidget(icon)
+
+        self.date_from = QDateEdit(QDate.currentDate().addDays(-29))
+        self.date_from.setObjectName("RangeDate")
+        self.date_from.setCalendarPopup(True)
+        self.date_from.setDisplayFormat("dd/MM/yyyy")
+        layout.addWidget(self.date_from)
+
+        arrow = QLabel("→")
+        arrow.setObjectName("Muted")
+        layout.addWidget(arrow)
+
+        self.date_to = QDateEdit(QDate.currentDate())
+        self.date_to.setObjectName("RangeDate")
+        self.date_to.setCalendarPopup(True)
+        self.date_to.setDisplayFormat("dd/MM/yyyy")
+        layout.addWidget(self.date_to)
+
+        # Editing a date by hand means "custom range" — clear the lit preset.
+        self.date_from.dateChanged.connect(self._on_manual_date)
+        self.date_to.dateChanged.connect(self._on_manual_date)
+        return box
+
+    def _apply_preset(self, key: str) -> None:
+        today = QDate.currentDate()
+        starts = {
+            "today": today,
+            "7d": today.addDays(-6),
+            "30d": today.addDays(-29),
+            "month": QDate(today.year(), today.month(), 1),
+            "year": QDate(today.year(), 1, 1),
+        }
+        self._suppress_manual = True
+        self.date_from.setDate(starts.get(key, today.addDays(-29)))
+        self.date_to.setDate(today)
+        self._suppress_manual = False
+        self.refresh()
+
+    def _on_manual_date(self, _date: QDate) -> None:
+        if getattr(self, "_suppress_manual", False):
+            return
+        # Deselect every preset without unchecking programmatically-set ones.
+        self._preset_group.setExclusive(False)
+        checked = self._preset_group.checkedButton()
+        if checked is not None:
+            checked.setChecked(False)
+        self._preset_group.setExclusive(True)
 
     def _section_heading(self, text: str) -> QLabel:
         label = QLabel(text)

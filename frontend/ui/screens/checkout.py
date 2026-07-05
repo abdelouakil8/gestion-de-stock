@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QStackedWidget,
     QTableWidget,
@@ -41,7 +42,6 @@ from ui.widgets.badge import Badge
 from ui.widgets.customer_search import CustomerSearchBox
 from ui.widgets.modal import show_error
 from ui.widgets.payment_dialogs import CheckoutPaymentDialog
-from ui.widgets.segmented import PriceLevelSelector
 from ui.widgets.states import EmptyState
 from ui.widgets.thumb import Thumb
 from ui.widgets.toast import show_toast
@@ -55,11 +55,15 @@ _PRICE_FIELDS = {
 # One control height for every editable cell so a cart row reads as a single
 # aligned band instead of a jumble of differently-sized widgets.
 _CELL_CONTROL_H = 34
+# A generous product thumbnail; the row hugs it (compact rows, big image).
+_CART_THUMB = 44
 
 
-def _centered_cell(widget: QWidget, left: int = SPACING["xs"], right: int = SPACING["xs"]) -> QWidget:
+def _centered_cell(widget: QWidget, left: int = 3, right: int = 3) -> QWidget:
     """Wrap a control so the table centers it vertically in the (taller) row
-    instead of stretching it to the full cell height."""
+    instead of stretching it to the full cell height. A control with an
+    Expanding horizontal policy also fills the cell width (auto-sizes to the
+    column) instead of shrinking to its content."""
     holder = QWidget()
     layout = QHBoxLayout(holder)
     layout.setContentsMargins(left, 0, right, 0)
@@ -227,28 +231,25 @@ class CheckoutScreen(QWidget):
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for column, width in (
-            (1, 114),  # Conditionnement ("Carton (×24)")
-            (2, 264),  # 4-state level selector, a compact connected control
-            (3, 96),  # Prix unitaire
-            (4, 62),  # Qté
-            (5, 94),  # Remise
-            (6, 98),  # Total
-            (7, 42),  # remove
+            (1, 112),  # Conditionnement ("Carton (×24)")
+            (2, 138),  # Niveau de prix — a select (shows full "Super gros")
+            (3, 124),  # Prix unitaire — enlarged
+            (4, 112),  # Qté — enlarged, clean editable number field
+            (5, 100),  # Remise
+            (6, 112),  # Total
+            (7, 44),  # remove
         ):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
             self.table.setColumnWidth(column, width)
-        # Numeric headers align with their right-aligned values; Qté centers.
-        for column in (3, 5, 6):
+        # Every numeric header aligns right, matching its right-aligned values.
+        for column in (3, 4, 5, 6):
             item = self.table.horizontalHeaderItem(column)
             if item is not None:
                 item.setTextAlignment(
                     Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                 )
-        qty_header = self.table.horizontalHeaderItem(4)
-        if qty_header is not None:
-            qty_header.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(THUMB_SIZES["cart"] + 18)
+        self.table.verticalHeader().setDefaultSectionSize(_CART_THUMB + 6)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         # Same table language as every DataTable: no grid, alternating rows.
@@ -425,7 +426,7 @@ class CheckoutScreen(QWidget):
             cell_layout = QHBoxLayout(product_cell)
             cell_layout.setContentsMargins(SPACING["xs"], 2, SPACING["xs"], 2)
             cell_layout.setSpacing(SPACING["sm"])
-            thumb = Thumb(THUMB_SIZES["cart"])
+            thumb = Thumb(_CART_THUMB)
             thumb.set_product(line.product)
             cell_layout.addWidget(thumb)
             name = QLabel(line.product["name"])
@@ -455,28 +456,41 @@ class CheckoutScreen(QWidget):
             packaging_combo.setFixedHeight(_CELL_CONTROL_H)
             self.table.setCellWidget(row, 1, _centered_cell(packaging_combo))
 
-            selector = PriceLevelSelector(
-                on_change=lambda level, target=line: self._on_level_changed(
-                    target, level
-                ),
-                level=line.level,
-                allow_manual=True,
+            # Price level as a clean select: Détail / Gros / Super gros /
+            # Manuel. A dropdown shows the full label (no clipping) and stays
+            # compact. Set the current index BEFORE connecting so seeding it
+            # never fires the change handler.
+            level_combo = QComboBox()
+            for value in ("detail", "gros", "super_gros"):
+                level_combo.addItem(strings.PRICE_LEVEL_LABELS[value], value)
+            level_combo.addItem(strings.PRICE_LEVEL_MANUAL, "manual")
+            for i in range(level_combo.count()):
+                if level_combo.itemData(i) == line.level:
+                    level_combo.setCurrentIndex(i)
+                    break
+            level_combo.setFixedHeight(_CELL_CONTROL_H)
+            level_combo.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
             )
-            selector.setFixedHeight(_CELL_CONTROL_H)
-            selector_holder = QWidget()
-            holder_layout = QHBoxLayout(selector_holder)
-            holder_layout.setContentsMargins(2, 0, 2, 0)
-            holder_layout.addWidget(selector)
-            holder_layout.addStretch(1)
-            self.table.setCellWidget(row, 2, selector_holder)
+            level_combo.currentIndexChanged.connect(
+                lambda _, target=line, combo=level_combo: self._on_level_changed(
+                    target, combo.currentData()
+                )
+            )
+            self.table.setCellWidget(row, 2, _centered_cell(level_combo))
 
             # Editable price cell — read-only for named levels, editable for
             # "Manuel" (the "type the price by hand" path). Server floor-checks.
+            # Price: a clean number field (no spinner arrows — the price is
+            # typed / resolved), read-only for named levels, editable in Manuel.
             price_spin = QDoubleSpinBox()
             price_spin.setDecimals(2)
             price_spin.setMaximum(99_999_999.99)
-            price_spin.setMinimumWidth(88)
+            price_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
             price_spin.setFixedHeight(_CELL_CONTROL_H)
+            price_spin.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+            )
             price_spin.setAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
@@ -487,22 +501,32 @@ class CheckoutScreen(QWidget):
             self.table.setCellWidget(row, 3, _centered_cell(price_spin))
             self._sync_price_cell(line)
 
+            # Quantity: a clean editable number field (no cramped arrows) that
+            # fills its column — the operator types any quantity and clearly
+            # sees it. Consistent with the price/discount fields.
             qty = QSpinBox()
             qty.setRange(1, 1_000_000)
-            qty.setMinimumWidth(54)
+            qty.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
             qty.setFixedHeight(_CELL_CONTROL_H)
-            qty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            qty.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            qty.setAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
             qty.setValue(line.quantity)
             qty.valueChanged.connect(
                 lambda value, target=line: self._on_qty_changed(target, value)
             )
             self.table.setCellWidget(row, 4, _centered_cell(qty))
 
+            # Discount: a typed number field (no arrows), fills the column.
             discount_spin = QDoubleSpinBox()
             discount_spin.setDecimals(2)
             discount_spin.setMaximum(99_999_999.99)
-            discount_spin.setMinimumWidth(86)
+            discount_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
             discount_spin.setFixedHeight(_CELL_CONTROL_H)
+            discount_spin.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+            )
             discount_spin.setAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
@@ -550,11 +574,9 @@ class CheckoutScreen(QWidget):
         manual = line.level == "manual"
         spin.blockSignals(True)
         spin.setReadOnly(not manual)
-        spin.setButtonSymbols(
-            QDoubleSpinBox.ButtonSymbols.UpDownArrows
-            if manual
-            else QDoubleSpinBox.ButtonSymbols.NoButtons
-        )
+        # No spinner arrows in either mode — a clean number field. In Manuel it
+        # is editable (type the price); otherwise it shows the resolved price.
+        spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
         spin.setValue(float(line.unit_price))
         spin.setToolTip(strings.CHECKOUT_MANUAL_PRICE_TIP if manual else "")
         spin.blockSignals(False)
