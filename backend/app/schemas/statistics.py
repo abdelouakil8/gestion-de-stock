@@ -13,8 +13,17 @@ class StatsSummary(BaseModel):
     revenue: Decimal
     gross_profit: Decimal
     sales_count: int
+    total_discounts: Decimal = Decimal("0.00")
     date_from: datetime
     date_to: datetime
+
+
+class PaymentMethodBreakdown(BaseModel):
+    """Revenue split by payment method for a date range."""
+
+    payment_method: str
+    total: Decimal
+    count: int
 
 
 class TopProduct(BaseModel):

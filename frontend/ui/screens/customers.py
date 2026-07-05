@@ -10,7 +10,7 @@ the top-customers ranking so the screen is useful at a glance.
 from decimal import Decimal
 
 import qtawesome as qta
-from PySide6.QtCore import QDate, Qt
+from PySide6.QtCore import QDate, Qt, QTimer
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
@@ -73,7 +73,13 @@ class CustomersScreen(QWidget):
         self.search = QLineEdit()
         self.search.setObjectName("SearchInput")
         self.search.setPlaceholderText(strings.CUSTOMERS_SEARCH_PLACEHOLDER)
-        self.search.textChanged.connect(lambda _: self.refresh_list())
+        # Debounced like every other live search (250 ms) — one API call per
+        # pause, not one per keystroke.
+        self._search_debounce = QTimer(self)
+        self._search_debounce.setSingleShot(True)
+        self._search_debounce.setInterval(250)
+        self._search_debounce.timeout.connect(self.refresh_list)
+        self.search.textChanged.connect(lambda _: self._search_debounce.start())
         left.addWidget(self.search)
 
         self.list = QListWidget()
@@ -289,7 +295,10 @@ class CustomersScreen(QWidget):
         self.card_revenue.set_value(fmt.fmt_money(stats["total_revenue"]))
         self.card_profit.set_value(fmt.fmt_money(stats["total_profit"]))
         self.card_sales.set_value(str(stats["sales_count"]))
-        self.card_balance.set_value(fmt.fmt_money(stats["outstanding_balance"]))
+        balance = Decimal(str(stats["outstanding_balance"]))
+        self.card_balance.set_value(
+            fmt.fmt_money(balance), tone="danger" if balance > 0 else ""
+        )
         last = stats.get("last_purchase_at")
         self.card_last.set_value(
             fmt.fmt_date(last) if last else strings.CUSTOMER_NEVER_PURCHASED

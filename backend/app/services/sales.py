@@ -26,7 +26,7 @@ from app.core.exceptions import (
 )
 from app.models import Customer, Payment, Product, ProductPackaging, Sale, SaleItem
 from app.schemas.sale import CheckoutRequest, PaymentInfo, SaleCreate
-from app.services import inventory, pricing
+from app.services import inventory, invoicing, pricing
 
 
 def _resolve_checkout_payment(
@@ -140,9 +140,16 @@ def finalize_sale(db: Session, data: CheckoutRequest) -> Sale:
             base_units = line.quantity * unit_count
             inventory.decrement_stock(db, product, base_units)
 
-            # Revenue is per-package price × number of packages; base units
-            # never touch the line total (only stock and cost/profit).
-            amount = pricing.line_total(unit_price, line.quantity)
+            # Discount: validate that it doesn't push effective price below floor.
+            discount = line.discount_amount or Decimal("0.00")
+            if discount > 0:
+                pkg_floor = packaging.price_super_gros if packaging else None
+                pricing.validate_discount_floor(
+                    product, unit_price, line.quantity, discount, floor=pkg_floor
+                )
+
+            # Revenue is per-package price × number of packages - discount.
+            amount = pricing.line_total(unit_price, line.quantity, discount)
             total += amount
             sale_items.append(
                 SaleItem(
@@ -154,24 +161,33 @@ def finalize_sale(db: Session, data: CheckoutRequest) -> Sale:
                     packaging_label=packaging.label if packaging is not None else None,
                     unit_count=unit_count,
                     unit_price_applied=unit_price,
+                    discount_amount=discount,
                     line_total=amount,
                 )
             )
 
         paid_amount, customer_id = _resolve_checkout_payment(db, data, total)
 
+        invoice_num = invoicing.allocate_invoice_number(db, data.store_id)
         sale = Sale(
             store_id=data.store_id,
             total_amount=total,
             paid_amount=paid_amount,
             customer_id=customer_id,
+            invoice_number=invoice_num,
             items=sale_items,
         )
         db.add(sale)
         # Every payment — including the one at checkout — is a Payment row,
         # so paid_amount always equals SUM(payments) by construction.
+        payment_method = data.payment.payment_method or "cash"
         if paid_amount > 0:
-            db.add(Payment(store_id=data.store_id, sale=sale, amount=paid_amount))
+            db.add(Payment(
+                store_id=data.store_id,
+                sale=sale,
+                amount=paid_amount,
+                payment_method=payment_method,
+            ))
         db.commit()
     except Exception:
         db.rollback()

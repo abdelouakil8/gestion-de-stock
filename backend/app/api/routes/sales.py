@@ -62,7 +62,7 @@ def add_payment(sale_id: UUID, payload: PaymentCreate, db: DbDep):
 
     Overpayment is rejected; partial instalments and full settlement both
     work; the whole operation is atomic."""
-    payments.record_payment(db, sale_id, payload.amount)
+    payments.record_payment(db, sale_id, payload.amount, payload.payment_method)
     return sales.get_sale(db, sale_id)
 
 

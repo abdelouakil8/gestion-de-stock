@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QVBoxLayout,
     QWidget,
+    QFileDialog,
 )
 
 from services.workers import run_api
@@ -147,6 +148,16 @@ class StatisticsScreen(QWidget):
         self.date_to = QDateEdit(QDate.currentDate())
         self.date_to.setCalendarPopup(True)
         header.addWidget(self.date_to)
+        self.btn_export_pdf = QPushButton(strings.STATS_EXPORT_PDF)
+        self.btn_export_pdf.setObjectName("Secondary")
+        self.btn_export_pdf.clicked.connect(self.export_pdf)
+        header.addWidget(self.btn_export_pdf)
+
+        self.btn_export_xlsx = QPushButton(strings.STATS_EXPORT_XLSX)
+        self.btn_export_xlsx.setObjectName("Secondary")
+        self.btn_export_xlsx.clicked.connect(self.export_xlsx)
+        header.addWidget(self.btn_export_xlsx)
+
         refresh = QPushButton(strings.REFRESH)
         refresh.setObjectName("Primary")
         refresh.clicked.connect(self.refresh)
@@ -191,6 +202,32 @@ class StatisticsScreen(QWidget):
         top_card.body.addWidget(self.top_table)
         layout.addWidget(top_card)
 
+        # Discounts + payment method breakdown (range-driven).
+        extras_row = QHBoxLayout()
+        extras_row.setSpacing(SPACING["sm"])
+        discount_card = Card()
+        disc_title = QLabel(strings.STATS_DISCOUNTS.upper())
+        disc_title.setObjectName("StatCardTitle")
+        discount_card.body.addWidget(disc_title)
+        self.discount_value = QLabel("—")
+        self.discount_value.setObjectName("StatCardValue")
+        discount_card.body.addWidget(self.discount_value)
+        discount_card.body.addStretch(1)
+        extras_row.addWidget(discount_card, stretch=1)
+
+        pm_card = SectionCard(strings.STATS_PAYMENT_METHODS, "fa5s.wallet")
+        self.pm_table = DataTable(
+            [
+                strings.STATS_PM_COL_METHOD,
+                strings.STATS_PM_COL_TOTAL,
+                strings.STATS_PM_COL_COUNT,
+            ]
+        )
+        self.pm_table.setMinimumHeight(140)
+        pm_card.body.addWidget(self.pm_table)
+        extras_row.addWidget(pm_card, stretch=3)
+        layout.addLayout(extras_row)
+
         # Associations (range-driven).
         assoc_card = SectionCard(strings.STATS_ASSOCIATIONS, "fa5s.link")
         self.rules_holder = QWidget()
@@ -221,6 +258,39 @@ class StatisticsScreen(QWidget):
             self.date_to.date().toString("yyyy-MM-dd"),
         )
 
+    def export_pdf(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Enregistrer le rapport", "rapport.pdf", "PDF (*.pdf)"
+        )
+        if not path:
+            return
+        df, dt = self._range()
+        run_api(
+            lambda c: c.get_report_pdf(self.store_id, df, dt),
+            lambda data: self._save_file(path, data),
+            lambda err: show_error(self, strings.ERROR_TITLE, err.message),
+        )
+
+    def export_xlsx(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Enregistrer le rapport", "rapport.xlsx", "Excel (*.xlsx)"
+        )
+        if not path:
+            return
+        df, dt = self._range()
+        run_api(
+            lambda c: c.get_report_xlsx(self.store_id, df, dt),
+            lambda data: self._save_file(path, data),
+            lambda err: show_error(self, strings.ERROR_TITLE, err.message),
+        )
+
+    def _save_file(self, path: str, data: bytes) -> None:
+        try:
+            with open(path, "wb") as f:
+                f.write(data)
+        except OSError as e:
+            show_error(self, strings.ERROR_TITLE, f"Erreur d'écriture : {e}")
+
     def refresh(self) -> None:
         date_from, date_to = self._range()
         self._error_shown = False
@@ -237,6 +307,16 @@ class StatisticsScreen(QWidget):
         run_api(
             lambda: self.api.stats_top_products(self.store_id, date_from, date_to),
             self._on_top,
+            self._on_error,
+        )
+        run_api(
+            lambda: self.api.stats_summary(self.store_id, date_from, date_to),
+            self._on_summary,
+            self._on_error,
+        )
+        run_api(
+            lambda: self.api.stats_payment_methods(self.store_id, date_from, date_to),
+            self._on_payment_methods,
             self._on_error,
         )
         self.assoc_stack.show_loading()
@@ -275,6 +355,20 @@ class StatisticsScreen(QWidget):
             holder_layout.setContentsMargins(4, 2, 4, 2)
             holder_layout.addWidget(thumb, alignment=Qt.AlignmentFlag.AlignCenter)
             self.top_table.setCellWidget(row, 0, holder)
+
+    def _on_summary(self, summary: object) -> None:
+        self.discount_value.setText(
+            fmt.fmt_money(summary.get("total_discounts", 0))
+        )
+
+    def _on_payment_methods(self, methods: object) -> None:
+        rows = []
+        for m in methods:
+            label = strings.PAYMENT_METHOD_LABELS.get(
+                m["payment_method"], m["payment_method"]
+            )
+            rows.append([label, fmt.fmt_money(m["total"]), str(m["count"])])
+        self.pm_table.set_rows(rows)
 
     def _on_associations(self, result: object) -> None:
         while self.rules_layout.count():

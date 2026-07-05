@@ -138,6 +138,16 @@ class CustomerPhoneExistsError(AppError):
         )
 
 
+class SupplierPhoneExistsError(AppError):
+    code = "supplier_phone_exists"
+
+    def __init__(self, phone: str) -> None:
+        super().__init__(
+            f"Un fournisseur avec le numéro {phone} existe déjà.",
+            phone=phone,
+        )
+
+
 class InvalidImageError(AppError):
     code = "invalid_image"
 
@@ -182,4 +192,46 @@ class SaleHasCustomerError(AppError):
             "Cette vente est déjà associée à un client — impossible de la "
             "marquer anonyme.",
             sale_id=str(sale_id),
+        )
+
+
+class RefundExceedsQuantityError(AppError):
+    """Attempting to refund more units than remain refundable on this line."""
+
+    code = "refund_exceeds_quantity"
+
+    def __init__(self, product_name: str, available: int, requested: int) -> None:
+        super().__init__(
+            f"Remboursement refusé pour « {product_name} » : "
+            f"quantité demandée ({requested}) dépasse "
+            f"le restant remboursable ({available}).",
+            product_name=product_name,
+            available=available,
+            requested=requested,
+        )
+
+
+class RefundExceedsPaidAmountError(AppError):
+    """Total refund would exceed what was actually paid on this sale."""
+
+    code = "refund_exceeds_paid"
+
+    def __init__(self, paid: object, attempted: object) -> None:
+        super().__init__(
+            f"Remboursement refusé : le montant total ({attempted}) dépasse "
+            f"le montant payé ({paid}).",
+            paid=str(paid),
+            attempted=str(attempted),
+        )
+
+
+class BackupInvalidError(AppError):
+    """Uploaded backup archive is invalid or corrupted."""
+
+    code = "backup_invalid"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Archive de sauvegarde invalide — le fichier est corrompu ou "
+            "n'est pas un backup valide."
         )

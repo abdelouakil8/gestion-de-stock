@@ -24,7 +24,9 @@ from app.core.exceptions import (
 from app.models import Payment, Sale
 
 
-def record_payment(db: Session, sale_id: UUID, amount: Decimal) -> Sale:
+def record_payment(
+    db: Session, sale_id: UUID, amount: Decimal, payment_method: str = "cash"
+) -> Sale:
     """Add a payment to a sale with an outstanding balance, atomically.
 
     Works for a partial instalment or the full settlement; anything above
@@ -58,7 +60,12 @@ def record_payment(db: Session, sale_id: UUID, amount: Decimal) -> Sale:
                 balance=sale.total_amount - sale.paid_amount, attempted=amount
             )
 
-        db.add(Payment(store_id=sale.store_id, sale_id=sale.id, amount=amount))
+        db.add(Payment(
+            store_id=sale.store_id,
+            sale_id=sale.id,
+            amount=amount,
+            payment_method=payment_method,
+        ))
         db.commit()
     except Exception:
         db.rollback()

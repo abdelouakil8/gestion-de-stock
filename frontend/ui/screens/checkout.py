@@ -33,7 +33,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from services import printing
 from services.workers import run_api
 from ui import format as fmt
 from ui import strings
@@ -65,6 +64,7 @@ class CartLine:
         # Set only when the cashier types a price (level == "manual"); the
         # server re-checks it against the floor.
         self.manual_price: Decimal | None = None
+        self.discount = Decimal("0.00")
 
     def _price_source(self) -> dict:
         return self.packaging if self.packaging else self.product
@@ -79,7 +79,8 @@ class CartLine:
 
     @property
     def total(self) -> Decimal:
-        return (self.unit_price * self.quantity).quantize(Decimal("0.01"))
+        gross = self.unit_price * self.quantity
+        return (gross - self.discount).quantize(Decimal("0.01"))
 
     @property
     def base_units(self) -> int:
@@ -189,7 +190,7 @@ class CheckoutScreen(QWidget):
         layout.addWidget(self.results)
 
         # Cart: table page + designed empty page.
-        self.table = QTableWidget(0, 7)
+        self.table = QTableWidget(0, 8)
         self.table.setHorizontalHeaderLabels(
             [
                 strings.CHECKOUT_COL_PRODUCT,
@@ -197,6 +198,7 @@ class CheckoutScreen(QWidget):
                 strings.CHECKOUT_COL_LEVEL,
                 strings.CHECKOUT_COL_UNIT_PRICE,
                 strings.CHECKOUT_COL_QTY,
+                strings.CHECKOUT_COL_DISCOUNT,
                 strings.CHECKOUT_COL_TOTAL,
                 strings.CHECKOUT_COL_REMOVE,
             ]
@@ -214,8 +216,9 @@ class CheckoutScreen(QWidget):
             (2, 300),  # 4-state level selector (Détail/Gros/Super gros/Manuel)
             (3, 110),  # Prix unitaire
             (4, 72),  # Qté
-            (5, 110),  # Total
-            (6, 40),  # remove
+            (5, 100),  # Remise
+            (6, 110),  # Total
+            (7, 40),  # remove
         ):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
             self.table.setColumnWidth(column, width)
@@ -223,6 +226,9 @@ class CheckoutScreen(QWidget):
         self.table.verticalHeader().setDefaultSectionSize(THUMB_SIZES["cart"] + 12)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        # Same table language as every DataTable: no grid, alternating rows.
+        self.table.setShowGrid(False)
+        self.table.setAlternatingRowColors(True)
 
         self.cart_stack = QStackedWidget()
         self.cart_empty = EmptyState(
@@ -459,6 +465,19 @@ class CheckoutScreen(QWidget):
             )
             self.table.setCellWidget(row, 4, qty)
 
+            discount_spin = QDoubleSpinBox()
+            discount_spin.setDecimals(2)
+            discount_spin.setMaximum(99_999_999.99)
+            discount_spin.setAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
+            discount_spin.setValue(float(line.discount))
+            discount_spin.setToolTip(strings.CHECKOUT_DISCOUNT_TIP)
+            discount_spin.valueChanged.connect(
+                lambda value, target=line: self._on_discount_changed(target, value)
+            )
+            self.table.setCellWidget(row, 5, discount_spin)
+
             total_item = QTableWidgetItem(fmt.fmt_money(line.total))
             total_item.setTextAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
@@ -467,13 +486,13 @@ class CheckoutScreen(QWidget):
                 total_item.setToolTip(
                     strings.CHECKOUT_BASE_UNITS.format(n=line.base_units)
                 )
-            self.table.setItem(row, 5, total_item)
+            self.table.setItem(row, 6, total_item)
 
             remove = QPushButton(qta.icon("fa5s.trash", color=NEUTRAL["500"]), "")
             remove.setObjectName("Ghost")
             remove.setToolTip(strings.CHECKOUT_REMOVE_LINE)
             remove.clicked.connect(lambda _, i=index: self._remove_line(i))
-            self.table.setCellWidget(row, 6, remove)
+            self.table.setCellWidget(row, 7, remove)
 
         self._refresh_totals()
         self.cart_stack.setCurrentWidget(self.table if self.cart else self.cart_empty)
@@ -510,7 +529,7 @@ class CheckoutScreen(QWidget):
         self._sync_price_cell(line)
         for row, cart_line in enumerate(self.cart):
             if cart_line is line:
-                total_item = self.table.item(row, 5)
+                total_item = self.table.item(row, 6)
                 if total_item is not None:
                     total_item.setText(fmt.fmt_money(line.total))
                     if line.packaging:
@@ -546,6 +565,10 @@ class CheckoutScreen(QWidget):
         line.quantity = value
         self._update_line_cells(line)
 
+    def _on_discount_changed(self, line: CartLine, value: float) -> None:
+        line.discount = Decimal(f"{value:.2f}")
+        self._update_line_cells(line)
+
     def _remove_line(self, index: int) -> None:
         del self.cart[index]
         self._rebuild_table()
@@ -570,6 +593,8 @@ class CheckoutScreen(QWidget):
             payload["packaging_id"] = line.packaging["id"]
         if line.level == "manual" and line.manual_price is not None:
             payload["unit_price_override"] = f"{line.manual_price:.2f}"
+        if line.discount > 0:
+            payload["discount_amount"] = f"{line.discount:.2f}"
         return payload
 
     def _checkout(self) -> None:
@@ -590,11 +615,12 @@ class CheckoutScreen(QWidget):
         payment = dialog.payment
         run_api(
             lambda: self.api.checkout(self.store_id, items, payment),
-            self._on_sale_done,
+            lambda sale: self._on_sale_done(sale, payment),
             self._on_sale_error,
         )
 
-    def _on_sale_done(self, sale: object) -> None:
+    def _on_sale_done(self, sale: dict, payment: dict) -> None:
+        customer_name = self.customer["name"] if self.customer else None
         self.cart.clear()
         self.customer = None
         self._refresh_customer_strip()
@@ -610,7 +636,7 @@ class CheckoutScreen(QWidget):
         show_toast(self, strings.CHECKOUT_DONE_TOAST)
         run_api(
             lambda: self.api.get_receipt_pdf(sale["id"]),
-            lambda pdf, sale_id=sale["id"]: self._print_receipt(sale_id, pdf),
+            lambda pdf: self._print_receipt(sale, pdf, payment, customer_name),
             lambda err: show_error(self, err.message),
         )
 
@@ -618,12 +644,23 @@ class CheckoutScreen(QWidget):
         self.pay_button.setEnabled(True)
         show_error(self, err.message)
 
-    def _print_receipt(self, sale_id: str, pdf: object) -> None:
+    def _print_receipt(self, sale: dict, pdf: bytes, payment: dict, customer_name: str | None) -> None:
         """Save the PDF and send it to the configured printer (Réglages)."""
-        path = Path(tempfile.gettempdir()) / f"recu_{sale_id}.pdf"
+        from services import printing, escpos_printer
+        
+        printer_name = printing.get_selected_printer()
+        store_name = self.window().store["name"] if hasattr(self.window(), "store") else "Boutique"
+        settings = self.window().store.get("settings", {}) if hasattr(self.window(), "store") else {}
+
+        if printer_name and escpos_printer.print_receipt_escpos(
+            sale, printer_name, settings, store_name, customer_name, payment["method"]
+        ):
+            return
+
+        path = Path(tempfile.gettempdir()) / f"recu_{sale['id']}.pdf"
         try:
             path.write_bytes(pdf)
-            printing.print_pdf(path, printing.get_selected_printer())
+            printing.print_pdf(path, printer_name)
         except OSError as exc:
             logger.warning("Receipt print failed: {}", exc)
             show_error(self, strings.RECEIPT_PRINT_FAILED.format(path=path))

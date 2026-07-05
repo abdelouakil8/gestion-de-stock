@@ -71,5 +71,11 @@ class StatCard(Card):
         )
         self.body.addWidget(self._value)
 
-    def set_value(self, text: str) -> None:
+    def set_value(self, text: str, tone: str = "") -> None:
+        """Update the metric. `tone` ('danger' | 'success' | '') colors the
+        value via the QSS [tone=…] variants — used e.g. to make a non-zero
+        outstanding balance impossible to miss."""
         self._value.setText(text)
+        self._value.setProperty("tone", tone)
+        self._value.style().unpolish(self._value)
+        self._value.style().polish(self._value)

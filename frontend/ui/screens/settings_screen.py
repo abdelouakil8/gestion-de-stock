@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 from services import printing
 from services.workers import run_api
 from ui import strings
+from ui.styles import tokens
 from ui.styles.tokens import ACCENT_PRESETS, NEUTRAL, SPACING, render_qss
 from ui.widgets.card import SectionCard
 from ui.widgets.modal import ModalDialog, show_error, show_info
@@ -90,6 +91,58 @@ class FactoryResetDialog(ModalDialog):
         self.pin_input.setFocus()
 
 
+class BackupRestoreDialog(ModalDialog):
+    """PIN confirmation to restore a backup — destructive, needs typed PIN."""
+
+    def __init__(self, api, zip_path: str, parent=None) -> None:
+        super().__init__(strings.BACKUP_RESTORE_TITLE, parent)
+        self.api = api
+        self.zip_path = zip_path
+        self.restore_done = False
+
+        warning = QLabel(strings.BACKUP_RESTORE_CONFIRM)
+        warning.setObjectName("FieldError")
+        warning.setWordWrap(True)
+        self.content.addWidget(warning)
+
+        self.pin_input = QLineEdit()
+        self.pin_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.pin_input.setPlaceholderText(strings.LOGIN_PLACEHOLDER)
+        self.pin_input.textChanged.connect(
+            lambda text: self.ok_button.setEnabled(bool(text.strip()))
+        )
+        self.content.addWidget(self.pin_input)
+
+        self.ok_button.setText(strings.BACKUP_RESTORE)
+        self.ok_button.setObjectName("Danger")
+        self.ok_button.setEnabled(False)
+        self.pin_input.setFocus()
+
+    def accept(self) -> None:
+        pin = self.pin_input.text().strip()
+        if not pin:
+            return
+        self.ok_button.setEnabled(False)
+        from pathlib import Path
+
+        zip_data = Path(self.zip_path).read_bytes()
+        run_api(
+            lambda: self.api.restore_backup(zip_data, pin),
+            self._on_done,
+            self._on_error,
+        )
+
+    def _on_done(self, _result: object) -> None:
+        self.restore_done = True
+        super().accept()
+
+    def _on_error(self, err) -> None:
+        self.ok_button.setEnabled(True)
+        show_error(self, err.message)
+        self.pin_input.selectAll()
+        self.pin_input.setFocus()
+
+
 class ReceiptPreview(QFrame):
     """Local mock of the printed receipt — same information layout.
 
@@ -120,6 +173,7 @@ class ReceiptPreview(QFrame):
         show_credit: bool,
     ) -> None:
         width = self.COLS
+        from ui.i18n import current_language
 
         def fit(text: str) -> str:
             return text if len(text) <= width else text[: width - 1] + "…"
@@ -129,6 +183,9 @@ class ReceiptPreview(QFrame):
 
         def row(left: str, right: str) -> str:
             space = width - len(right)
+            if current_language == "ar":
+                # In Arabic, the visual left is the logical right.
+                return fit(right).ljust(len(right) + 1) + fit(left).rjust(width - len(right) - 1)
             return fit(left)[:space].ljust(space) + right
 
         lines = [center(shop_name or self.store_name)]
@@ -218,10 +275,6 @@ class SettingsScreen(QWidget):
         self.language_combo = QComboBox()
         self.language_combo.addItem(strings.SETTINGS_LANGUAGE_FR, "fr")
         self.language_combo.addItem(strings.SETTINGS_LANGUAGE_AR, "ar")
-        # Arabic is listed but not shipped yet — visibly disabled with the
-        # "à venir" mention rather than silently failing.
-        model_item = self.language_combo.model().item(1)
-        model_item.setEnabled(False)
         language_card.body.addWidget(self.language_combo)
         left.addWidget(language_card)
 
@@ -241,12 +294,59 @@ class SettingsScreen(QWidget):
             self.printer_combo.setCurrentIndex(max(index, 0))
         self.printer_combo.currentIndexChanged.connect(self._on_printer_changed)
         printer_card.body.addWidget(self.printer_combo)
+        
+        self.escpos_check = QCheckBox(strings.SETTINGS_PRINTER_ESCPOS)
+        self.escpos_check.toggled.connect(self._on_escpos_toggled)
+        printer_card.body.addWidget(self.escpos_check)
+
+        btn_row = QHBoxLayout()
         test_print = QPushButton(
             qta.icon("fa5s.print", color=NEUTRAL["600"]), strings.SETTINGS_PRINTER_TEST
         )
         test_print.clicked.connect(self._test_print)
-        printer_card.body.addWidget(test_print, alignment=Qt.AlignmentFlag.AlignLeft)
+        btn_row.addWidget(test_print)
+
+        self.drawer_btn = QPushButton(
+            qta.icon("fa5s.box-open", color=NEUTRAL["600"]), strings.SETTINGS_PRINTER_DRAWER
+        )
+        self.drawer_btn.clicked.connect(self._kick_drawer)
+        btn_row.addWidget(self.drawer_btn)
+        btn_row.addStretch(1)
+        printer_card.body.addLayout(btn_row)
         left.addWidget(printer_card)
+
+        self._refresh_printer_ui()
+
+        # ------------------------------------------------------ backup
+        backup_card = SectionCard(strings.BACKUP_SECTION, "fa5s.database")
+        backup_hint = QLabel(strings.BACKUP_HINT)
+        backup_hint.setObjectName("FieldHint")
+        backup_hint.setWordWrap(True)
+        backup_card.body.addWidget(backup_hint)
+        backup_row = QHBoxLayout()
+        self.backup_create_btn = QPushButton(
+            qta.icon("fa5s.download", color=NEUTRAL["600"]), strings.BACKUP_CREATE
+        )
+        self.backup_create_btn.clicked.connect(self._create_backup)
+        backup_row.addWidget(self.backup_create_btn)
+        self.backup_restore_btn = QPushButton(
+            qta.icon("fa5s.upload", color=NEUTRAL["600"]), strings.BACKUP_RESTORE
+        )
+        self.backup_restore_btn.clicked.connect(self._restore_backup)
+        backup_row.addWidget(self.backup_restore_btn)
+        backup_row.addStretch(1)
+        backup_card.body.addLayout(backup_row)
+        left.addWidget(backup_card)
+        
+        # ------------------------------------------------------ tour
+        tour_card = SectionCard(strings.FEATURE_TOUR_TITLE, "fa5s.info-circle")
+        tour_hint = QLabel("Redécouvrez les fonctionnalités principales de l'application.")
+        tour_hint.setObjectName("FieldHint")
+        tour_card.body.addWidget(tour_hint)
+        tour_btn = QPushButton(qta.icon("fa5s.play", color=NEUTRAL["600"]), "Démarrer la visite")
+        tour_btn.clicked.connect(self._start_tour)
+        tour_card.body.addWidget(tour_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        left.addWidget(tour_card)
 
         # ------------------------------------------------------ accent
         accent_card = SectionCard(strings.SETTINGS_ACCENT_SECTION, "fa5s.palette")
@@ -356,11 +456,46 @@ class SettingsScreen(QWidget):
                 checked.setChecked(False)
                 self._swatch_group.setExclusive(True)
 
+    # ---------------------------------------------------------- actions
+    
+    def _start_tour(self) -> None:
+        from ui.screens.feature_tour import FeatureTourDialog
+        dialog = FeatureTourDialog(self)
+        dialog.exec()
+
     # ------------------------------------------------------------- printer
 
     def _on_printer_changed(self) -> None:
-        """Persist the printer choice machine-locally (not to the backend)."""
-        printing.set_selected_printer(self.printer_combo.currentData())
+        name = self.printer_combo.currentData()
+        printing.set_selected_printer(name)
+        self._refresh_printer_ui()
+
+    def _refresh_printer_ui(self) -> None:
+        name = self.printer_combo.currentData()
+        from services import escpos_printer
+        if name:
+            self.escpos_check.setEnabled(True)
+            self.escpos_check.blockSignals(True)
+            self.escpos_check.setChecked(escpos_printer.is_escpos_enabled(name))
+            self.escpos_check.blockSignals(False)
+            self.drawer_btn.setEnabled(self.escpos_check.isChecked())
+        else:
+            self.escpos_check.setEnabled(False)
+            self.escpos_check.setChecked(False)
+            self.drawer_btn.setEnabled(False)
+
+    def _on_escpos_toggled(self, checked: bool) -> None:
+        name = self.printer_combo.currentData()
+        if name:
+            from services import escpos_printer
+            escpos_printer.set_escpos_enabled(name, checked)
+            self.drawer_btn.setEnabled(checked)
+
+    def _kick_drawer(self) -> None:
+        name = self.printer_combo.currentData()
+        if name:
+            from services import escpos_printer
+            escpos_printer.kick_drawer(name)
 
     def _test_print(self) -> None:
         import tempfile
@@ -397,13 +532,21 @@ class SettingsScreen(QWidget):
 
     def _on_saved(self, settings: object) -> None:
         self.save_button.setEnabled(True)
+        old_lang = self.settings.get("ui_language", "fr")
         self.settings = dict(settings)
+        new_lang = self.settings.get("ui_language", "fr")
+        
         # Re-theme live from the saved accent — no restart needed.
-        accent = settings.get("theme_accent")
+        accent = self.settings.get("theme_accent")
         app = QApplication.instance()
         if app is not None and accent:
-            app.setStyleSheet(render_qss(accent))
-        show_toast(self, strings.SETTINGS_SAVED_TOAST)
+            tokens.CURRENT_ACCENT = accent
+            app.setStyleSheet(render_qss())
+            
+        if old_lang != new_lang:
+            show_info(self, strings.SETTINGS_RESTART_REQUIRED)
+        else:
+            show_toast(self, strings.SETTINGS_SAVED_TOAST)
 
     def _on_save_error(self, err) -> None:
         self.save_button.setEnabled(True)
@@ -411,6 +554,51 @@ class SettingsScreen(QWidget):
             show_error(self, strings.PIN_REQUIRED_ACTION)
         else:
             show_error(self, err.message)
+
+    # ------------------------------------------------------------- backup
+
+    def _create_backup(self) -> None:
+        self.backup_create_btn.setEnabled(False)
+        self.backup_create_btn.setText(strings.BACKUP_CREATING)
+        run_api(
+            lambda: self.api.create_backup(),
+            self._on_backup_created,
+            self._on_backup_error,
+        )
+
+    def _on_backup_created(self, data: bytes) -> None:
+        from PySide6.QtWidgets import QFileDialog
+
+        self.backup_create_btn.setEnabled(True)
+        self.backup_create_btn.setText(strings.BACKUP_CREATE)
+        path, _ = QFileDialog.getSaveFileName(
+            self, strings.BACKUP_CREATE, "backup.zip", strings.BACKUP_FILE_FILTER
+        )
+        if path:
+            from pathlib import Path
+
+            Path(path).write_bytes(data)
+            show_toast(self, strings.BACKUP_CREATED)
+
+    def _on_backup_error(self, err) -> None:
+        self.backup_create_btn.setEnabled(True)
+        self.backup_create_btn.setText(strings.BACKUP_CREATE)
+        show_error(self, err.message)
+
+    def _restore_backup(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, strings.BACKUP_RESTORE, "", strings.BACKUP_FILE_FILTER
+        )
+        if not path:
+            return
+        dialog = BackupRestoreDialog(self.api, path, parent=self)
+        if dialog.exec() and dialog.restore_done:
+            show_info(self, strings.BACKUP_RESTORE_SUCCESS)
+            app = QApplication.instance()
+            if app is not None:
+                app.quit()
 
     # --------------------------------------------------------- danger zone
 

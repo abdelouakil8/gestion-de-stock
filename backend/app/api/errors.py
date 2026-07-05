@@ -17,12 +17,15 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.exceptions import (
     AppError,
+    BackupInvalidError,
     ImageTooLargeError,
     InvalidImageError,
     InvalidPaymentAmountError,
     InvalidPriceLevelsError,
     InvalidQuantityError,
     NotFoundError,
+    RefundExceedsPaidAmountError,
+    RefundExceedsQuantityError,
     SaleCustomerAlreadySetError,
     SaleHasCustomerError,
 )
@@ -40,6 +43,9 @@ _STATUS_BY_CODE = {
     # the mapping table self-documenting.
     SaleCustomerAlreadySetError.code: status.HTTP_409_CONFLICT,
     SaleHasCustomerError.code: status.HTTP_409_CONFLICT,
+    RefundExceedsQuantityError.code: status.HTTP_409_CONFLICT,
+    RefundExceedsPaidAmountError.code: status.HTTP_409_CONFLICT,
+    BackupInvalidError.code: status.HTTP_422_UNPROCESSABLE_CONTENT,
     # Business-rule rejections (price floor, stock, unavailable product,
     # credit without customer, overpayment, duplicate phone…) default to
     # 409 Conflict below.

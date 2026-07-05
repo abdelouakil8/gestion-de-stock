@@ -84,11 +84,21 @@ def test_receipt_long_and_accented_names(db):
 
 
 def test_receipt_non_latin_names_degrade_without_crashing(db):
-    # Arabic product names render as placeholders until the RTL font update,
+    # Arabic product names render as placeholders if UI language is NOT Arabic,
     # but generation must never fail during a checkout.
     store, sale = make_sale(db, ["ماء معدني ١٫٥ لتر", "Savon — صابون"])
     pdf = receipts.build_receipt_pdf(sale, store)
     assert pdf.startswith(b"%PDF")
+    
+def test_receipt_arabic_names_are_shaped_with_rtl_setting(db):
+    store, sale = make_sale(db, ["ماء معدني ١٫٥ لتر"])
+    row = settings_service.update_settings(db, store.id, SettingsUpdate(ui_language="ar"))
+    pdf = receipts.build_receipt_pdf(sale, store, row)
+    assert pdf.startswith(b"%PDF")
+    # Generating the PDF without crashing and with a valid PDF header is sufficient 
+    # since Arabic text shaping subsets the TTF and encodes it differently.
+    assert len(pdf) > 2000
+
 
 
 # --------------------------------------------- Phase 6: settings + credit

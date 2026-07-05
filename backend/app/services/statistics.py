@@ -20,10 +20,11 @@ from sqlalchemy import desc, func, select, type_coerce
 from sqlalchemy.orm import Session
 
 from app.db.types import Money
-from app.models import Product, Sale, SaleItem
+from app.models import Payment, Product, Sale, SaleItem
 from app.schemas.statistics import (
     OverviewPeriod,
     OverviewStats,
+    PaymentMethodBreakdown,
     PeriodStats,
     ProductStats,
     StatsSummary,
@@ -68,6 +69,9 @@ def sales_summary(
                 Money(),
             ).label("gross_profit"),
             func.count(func.distinct(SaleItem.sale_id)).label("sales_count"),
+            type_coerce(
+                func.coalesce(func.sum(SaleItem.discount_amount), 0), Money()
+            ).label("total_discounts"),
         )
         .join(Sale, SaleItem.sale_id == Sale.id)
         .join(Product, SaleItem.product_id == Product.id)
@@ -78,6 +82,7 @@ def sales_summary(
         revenue=row.revenue,
         gross_profit=row.gross_profit,
         sales_count=row.sales_count,
+        total_discounts=row.total_discounts,
         date_from=date_from,
         date_to=date_to,
     )
@@ -280,3 +285,35 @@ def overview(db: Session, store_id: UUID, now: datetime | None = None) -> Overvi
             )
         )
     return OverviewStats(periods=periods)
+
+
+def payment_method_breakdown(
+    db: Session, store_id: UUID, date_from: datetime, date_to: datetime
+) -> list[PaymentMethodBreakdown]:
+    """Revenue split by payment method for the date range."""
+    rows = db.execute(
+        select(
+            Payment.payment_method,
+            type_coerce(func.sum(Payment.amount), Money()).label("total"),
+            func.count().label("count"),
+        )
+        .join(Sale, Payment.sale_id == Sale.id)
+        .where(
+            Sale.store_id == store_id,
+            Sale.deleted_at.is_(None),
+            Payment.deleted_at.is_(None),
+            Payment.created_at >= date_from,
+            Payment.created_at <= date_to,
+        )
+        .group_by(Payment.payment_method)
+        .order_by(desc("total"))
+    ).all()
+
+    return [
+        PaymentMethodBreakdown(
+            payment_method=row.payment_method,
+            total=row.total,
+            count=row.count,
+        )
+        for row in rows
+    ]

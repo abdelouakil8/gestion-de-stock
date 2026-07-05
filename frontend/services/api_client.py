@@ -76,8 +76,14 @@ class ApiClient:
 
     # ---------------------------------------------------------------- auth
 
+    def get_auth_status(self) -> dict:
+        return self._request("GET", "/auth/status")
+
     def verify_pin(self, pin: str) -> dict:
         return self._request("POST", "/auth/verify", json={"pin": pin})
+
+    def set_initial_pin(self, pin: str) -> dict:
+        return self._request("POST", "/auth/set-pin", json={"pin": pin})
 
     # --------------------------------------------------------------- stores
 
@@ -243,16 +249,36 @@ class ApiClient:
         """Confirm a sale stays anonymous. Idempotent server-side."""
         return self._request("POST", f"/sales/{sale_id}/confirm-guest")
 
-    def record_payment(self, sale_id: str, amount: str) -> dict:
+    def record_payment(
+        self, sale_id: str, amount: str, payment_method: str = "cash"
+    ) -> dict:
         """Later payment on a credit sale; server rejects overpayment."""
         return self._request(
-            "POST", f"/sales/{sale_id}/payments", json={"amount": amount}
+            "POST",
+            f"/sales/{sale_id}/payments",
+            json={"amount": amount, "payment_method": payment_method},
         )
 
     def get_receipt_pdf(self, sale_id: str) -> bytes:
         return self._request("GET", f"/sales/{sale_id}/receipt")
 
     # ----------------------------------------------------------- statistics
+
+    def get_report_pdf(self, store_id: str, date_from: str, date_to: str) -> bytes:
+        return self._request(
+            "GET",
+            "/statistics/report.pdf",
+            owner=True,
+            params={"store_id": store_id, "date_from": date_from, "date_to": date_to},
+        )
+
+    def get_report_xlsx(self, store_id: str, date_from: str, date_to: str) -> bytes:
+        return self._request(
+            "GET",
+            "/statistics/report.xlsx",
+            owner=True,
+            params={"store_id": store_id, "date_from": date_from, "date_to": date_to},
+        )
 
     def stats_summary(self, store_id: str, date_from: str, date_to: str) -> dict:
         return self._request(
@@ -329,6 +355,16 @@ class ApiClient:
             },
         )
 
+    def stats_payment_methods(
+        self, store_id: str, date_from: str, date_to: str
+    ) -> list[dict]:
+        return self._request(
+            "GET",
+            "/statistics/payment-methods",
+            owner=True,
+            params={"store_id": store_id, "date_from": date_from, "date_to": date_to},
+        )
+
     # ---------------------------------------------------------------- alerts
 
     def get_alerts(self, store_id: str) -> dict:
@@ -351,6 +387,96 @@ class ApiClient:
         so the confirmation dialog cannot be bypassed."""
         return self._request(
             "POST", "/admin/factory-reset", extra_headers={"X-Owner-Pin": pin}
+        )
+
+    # --------------------------------------------------------------- backup
+
+    def create_backup(self) -> bytes:
+        """Download a full backup ZIP. Returns raw bytes."""
+        return self._request("POST", "/backup/create", owner=True)
+
+    def restore_backup(self, zip_data: bytes, pin: str) -> dict:
+        """Upload a backup ZIP to restore. Returns safety backup info."""
+        return self._request(
+            "POST",
+            "/backup/restore",
+            extra_headers={"X-Owner-Pin": pin},
+            files={"file": ("backup.zip", zip_data, "application/zip")},
+        )
+
+    def list_backups(self) -> list[dict]:
+        return self._request("GET", "/backup/list", owner=True)
+
+    # -------------------------------------------------------------- refunds
+
+    def get_refundable_items(self, sale_id: str) -> list[dict]:
+        return self._request("GET", f"/sales/{sale_id}/refundable")
+
+    def create_refund(
+        self, sale_id: str, items: list[dict], reason: str | None = None
+    ) -> dict:
+        body: dict = {"items": items}
+        if reason:
+            body["reason"] = reason
+        return self._request("POST", f"/sales/{sale_id}/refund", owner=True, json=body)
+
+    def list_refunds(self, sale_id: str) -> list[dict]:
+        return self._request("GET", f"/sales/{sale_id}/refunds")
+
+    def get_refund_receipt(self, sale_id: str, refund_id: str) -> bytes:
+        return self._request("GET", f"/sales/{sale_id}/refunds/{refund_id}/receipt")
+
+    # ------------------------------------------------------------ suppliers
+
+    def list_suppliers(self, store_id: str, q: str | None = None) -> list[dict]:
+        params: dict = {"store_id": store_id}
+        if q:
+            params["q"] = q
+        return self._request("GET", "/suppliers", params=params)
+
+    def create_supplier(self, payload: dict) -> dict:
+        return self._request("POST", "/suppliers", owner=True, json=payload)
+
+    def update_supplier(self, supplier_id: str, payload: dict) -> dict:
+        return self._request(
+            "PATCH", f"/suppliers/{supplier_id}", owner=True, json=payload
+        )
+
+    def delete_supplier(self, supplier_id: str) -> None:
+        return self._request("DELETE", f"/suppliers/{supplier_id}", owner=True)
+
+    # -------------------------------------------------------- purchase orders
+
+    def list_purchase_orders(
+        self, store_id: str, supplier_id: str | None = None
+    ) -> list[dict]:
+        params: dict = {"store_id": store_id}
+        if supplier_id:
+            params["supplier_id"] = supplier_id
+        return self._request("GET", "/purchase-orders", params=params)
+
+    def create_purchase_order(self, payload: dict) -> dict:
+        return self._request("POST", "/purchase-orders", owner=True, json=payload)
+
+    def record_supplier_payment(
+        self, order_id: str, amount: str, payment_method: str = "cash"
+    ) -> dict:
+        return self._request(
+            "POST",
+            f"/purchase-orders/{order_id}/payments",
+            owner=True,
+            json={"amount": amount, "payment_method": payment_method},
+        )
+
+    # ---------------------------------------------------------- product import
+
+    def import_products_csv(self, store_id: str, file_data: bytes) -> dict:
+        return self._request(
+            "POST",
+            "/products/import",
+            owner=True,
+            params={"store_id": store_id},
+            files={"file": ("import.csv", file_data, "text/csv")},
         )
 
 

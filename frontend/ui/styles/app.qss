@@ -23,10 +23,13 @@ QWidget {
     font-size: $font_base;
     font-weight: 600;
 }
-#TitleBarBrand {
+/* NB: '#TitleBar QLabel' above is more specific (ID+type) than a lone ID,
+   so the brand rule must repeat the ancestor to actually win. */
+#TitleBar QLabel#TitleBarBrand {
     color: $text_on_dark_muted;
     font-size: $font_caption;
-    font-weight: 500;
+    font-weight: 600;
+    letter-spacing: 0.5px;
 }
 #TitleBar QPushButton {
     background: transparent;
@@ -111,6 +114,9 @@ QWidget {
     font-size: $font_title;
     font-weight: 700;
 }
+/* Tone variants — a non-zero credit balance must be impossible to miss. */
+#StatCardValue[tone="danger"] { color: $danger; }
+#StatCardValue[tone="success"] { color: $success; }
 #SectionTitle {
     background: transparent;
     font-size: $font_lg;
@@ -254,6 +260,10 @@ QRadioButton::indicator:checked {
 }
 QRadioButton::indicator:checked:hover { background: $primary_hover; border-color: $primary_hover; }
 QRadioButton::indicator:disabled { background: $surface_sunken; border-color: $border_light; }
+/* Keyboard focus must be VISIBLE on toggles too (WCAG 2.4.7). */
+QCheckBox:focus::indicator, QRadioButton:focus::indicator {
+    border: 2px solid $focus_ring;
+}
 
 /* ================================ Buttons =============================== */
 
@@ -403,6 +413,36 @@ QListWidget::item:selected {
     background: $primary_subtle;
     color: $text;
 }
+
+/* Stock category rail — navigation, not a data list: sunken surface,
+   selected entry reads like the sidebar's active item. */
+#CategoryRail {
+    background: $surface_sunken;
+    border: 1px solid $border_light;
+    border-radius: $radius_md;
+    padding: 6px;
+}
+#CategoryRail::item {
+    padding: 9px 10px;
+    border-radius: $radius_sm;
+    color: $text_secondary;
+    font-weight: 500;
+}
+#CategoryRail::item:hover { background: $row_hover; color: $text; }
+#CategoryRail::item:selected {
+    background: $primary_subtle;
+    color: $primary_text_subtle;
+    font-weight: 700;
+}
+
+/* Customer search popup (Caisse / paiement / Ventes) — floating panel:
+   clear boundary via border contrast (no GPU shadows on this hardware). */
+#CustomerSearchPopup {
+    background: $surface;
+    border: 1px solid $border_strong;
+    border-radius: $radius_md;
+}
+#CustomerSearchPopup QListWidget { border: none; }
 
 /* =============================== Tabs =================================== */
 

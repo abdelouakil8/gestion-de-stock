@@ -1,10 +1,12 @@
 """PIN gate shown at application start (Phase 3 local auth, UI side)."""
 
+import qtawesome as qta
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QLabel, QLineEdit, QPushButton, QVBoxLayout
 
 from services.workers import run_api
 from ui import strings
+from ui.styles import tokens
 from ui.styles.tokens import SPACING
 
 
@@ -23,7 +25,23 @@ class LoginDialog(QDialog):
         layout.setContentsMargins(*[SPACING["xl"]] * 4)
         layout.setSpacing(SPACING["md"])
 
-        layout.addWidget(QLabel(strings.LOGIN_PROMPT))
+        # Brand moment — the first thing the merchant sees every morning.
+        brand_icon = QLabel()
+        brand_icon.setPixmap(
+            qta.icon("fa5s.store", color=tokens.CURRENT_ACCENT).pixmap(40, 40)
+        )
+        brand_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        brand_icon.setStyleSheet("background: transparent;")
+        layout.addWidget(brand_icon)
+        brand_name = QLabel(strings.APP_TITLE)
+        brand_name.setObjectName("ScreenTitle")
+        brand_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(brand_name)
+        layout.addSpacing(SPACING["sm"])
+
+        prompt = QLabel(strings.LOGIN_PROMPT)
+        prompt.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(prompt)
         self.pin_input = QLineEdit()
         self.pin_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.pin_input.setPlaceholderText(strings.LOGIN_PLACEHOLDER)

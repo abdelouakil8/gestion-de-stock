@@ -40,6 +40,7 @@ try:
     from app.main import app as fastapi_app
     from services.api_client import ApiClient, ApiError
     from ui import strings
+    from ui.styles import tokens
     from ui.screens.login import LoginDialog
     from ui.screens.main_window import MainWindow
     from ui.styles.tokens import render_qss
@@ -131,6 +132,17 @@ def main() -> int:
     if os.environ.get("POS_FORCE_RTL"):
         qt_app.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
+    from services.license import find_license, verify_license
+    lic_path = find_license()
+    if not lic_path:
+        QMessageBox.critical(None, strings.LICENSE_ERROR_TITLE, strings.LICENSE_MISSING)
+        return 1
+    try:
+        verify_license(lic_path)
+    except ValueError as e:
+        QMessageBox.critical(None, strings.LICENSE_ERROR_TITLE, str(e))
+        return 1
+
     if not wait_for_api():
         QMessageBox.critical(
             None, strings.API_STARTUP_ERROR_TITLE, strings.API_STARTUP_ERROR_TEXT
@@ -148,15 +160,32 @@ def main() -> int:
     # blocking call, pre-UI; a failure just keeps the default accent.
     try:
         store_settings = api.get_settings(store["id"])
-        qt_app.setStyleSheet(render_qss(store_settings.get("theme_accent")))
-    except ApiError:
-        pass
+        tokens.CURRENT_ACCENT = store_settings.get("theme_accent", "#2563EB")
+        
+        from ui.i18n import apply_language
+        apply_language(store_settings.get("ui_language", "fr"))
+    except Exception as exc:
+        logger.warning("Failed to fetch settings at startup: {}", exc)
 
     smoke_test = bool(os.environ.get("POS_SMOKE_TEST"))
     if not smoke_test:  # automated checks skip the interactive PIN gate
-        login = LoginDialog(api)
-        if not login.exec():
-            return 0
+        # Check if PIN is configured safely without triggering a 401 warning
+        try:
+            status_data = api.get_auth_status()
+            pin_configured = status_data.get("configured", True)
+        except ApiError:
+            pin_configured = True  # fallback if endpoint fails
+
+        if not pin_configured:
+            from ui.screens.onboarding import OnboardingWizard
+            wizard = OnboardingWizard(api)
+            if not wizard.exec():
+                return 0
+        else:
+            login = LoginDialog(api)
+            if not login.exec():
+                return 0
+                
     logger.info(
         "UI started | store_id={} rtl={}",
         store["id"],

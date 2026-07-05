@@ -36,6 +36,7 @@ class Sale(BaseModel, StoreScopedMixin):
     paid_amount: Mapped[Decimal] = mapped_column(
         Money, nullable=False, default=Decimal("0.00")
     )
+    invoice_number: Mapped[int | None] = mapped_column(nullable=True, default=None)
 
     # No delete/delete-orphan cascade: sale items and payments are financial
     # records and must never be hard-deleted, not even by accidental
@@ -82,6 +83,9 @@ class SaleItem(BaseModel, StoreScopedMixin):
         nullable=False, default=1, server_default="1"
     )
     unit_price_applied: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    discount_amount: Mapped[Decimal] = mapped_column(
+        Money, nullable=False, default=Decimal("0.00"), server_default="0"
+    )
     line_total: Mapped[Decimal] = mapped_column(Money, nullable=False)
 
     sale: Mapped["Sale"] = relationship(back_populates="items")
@@ -102,5 +106,8 @@ class Payment(BaseModel, StoreScopedMixin):
         ForeignKey("sales.id"), nullable=False, index=True
     )
     amount: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    payment_method: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="cash", server_default="cash"
+    )
 
     sale: Mapped["Sale"] = relationship(back_populates="payments")

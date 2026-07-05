@@ -4,13 +4,17 @@ from app.api.routes import (
     admin,
     alerts,
     auth,
+    backup,
     categories,
     customers,
     products,
+    purchase_orders,
+    refunds,
     sales,
     settings,
     statistics,
     stores,
+    suppliers,
 )
 
 api_router = APIRouter()
@@ -25,3 +29,9 @@ api_router.include_router(statistics.router, prefix="/statistics", tags=["statis
 api_router.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
+api_router.include_router(backup.router, prefix="/backup", tags=["backup"])
+api_router.include_router(refunds.router, prefix="/sales", tags=["refunds"])
+api_router.include_router(suppliers.router, prefix="/suppliers", tags=["suppliers"])
+api_router.include_router(
+    purchase_orders.router, prefix="/purchase-orders", tags=["purchase-orders"]
+)

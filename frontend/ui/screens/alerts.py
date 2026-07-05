@@ -90,6 +90,8 @@ class _CreditRow(QWidget):
             strings.ALERTS_AGE_DAYS.format(days=credit["age_days"]),
             _age_kind(credit["age_days"]),
         )
+        # The color code (grey/orange/red) is explained on hover.
+        age.setToolTip(strings.ALERTS_AGE_TOOLTIP)
         layout.addWidget(age)
 
         pay = QPushButton(

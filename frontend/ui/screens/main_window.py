@@ -34,6 +34,7 @@ from ui.screens.customers import CustomersScreen
 from ui.screens.inventory import InventoryScreen
 from ui.screens.settings_screen import SettingsScreen
 from ui.screens.statistics import StatisticsScreen
+from ui.screens.suppliers import SuppliersScreen
 from ui.screens.ventes import VentesScreen
 from ui.styles.tokens import ICON_SIZES, NEUTRAL, SPACING
 
@@ -63,7 +64,11 @@ class TitleBar(QWidget):
         )
         brand_icon.setStyleSheet("background: transparent;")
         layout.addWidget(brand_icon)
-        layout.addWidget(QLabel(strings.APP_TITLE))
+        brand = QLabel(strings.APP_TITLE)
+        # Quiet chrome: the brand mark uses the muted caption style so the
+        # visual weight stays on the screen content, not the window frame.
+        brand.setObjectName("TitleBarBrand")
+        layout.addWidget(brand)
         layout.addStretch(1)
 
         def window_button(icon_name: str, tooltip: str) -> QPushButton:
@@ -246,6 +251,7 @@ class MainWindow(QMainWindow):
             api, store["id"], on_view_product=self._open_product_from_alert
         )
         self.statistics = StatisticsScreen(api, store["id"])
+        self.suppliers_screen = SuppliersScreen(api, store["id"])
         self.alerts = AlertsScreen(api, store["id"], self._open_product_from_alert)
         self.settings_screen = SettingsScreen(api, store)
 
@@ -255,6 +261,7 @@ class MainWindow(QMainWindow):
             ("fa5s.boxes", strings.NAV_INVENTORY, self.inventory),
             ("fa5s.users", strings.NAV_CUSTOMERS, self.customers),
             ("fa5s.receipt", strings.NAV_SALES, self.ventes),
+            ("fa5s.truck", strings.NAV_SUPPLIERS, self.suppliers_screen),
             ("fa5s.chart-line", strings.NAV_STATISTICS, self.statistics),
             ("fa5s.bell", strings.NAV_ALERTS, self.alerts),
             ("fa5s.cog", strings.NAV_SETTINGS, self.settings_screen),
@@ -265,7 +272,7 @@ class MainWindow(QMainWindow):
             nav.addWidget(button)
             self._nav_buttons.append(button)
         nav.addStretch(1)
-        self.alerts_nav = self._nav_buttons[5]
+        self.alerts_nav = self._nav_buttons[6]
 
         body.addWidget(sidebar)
         body.addWidget(self.stack, stretch=1)
@@ -287,6 +294,21 @@ class MainWindow(QMainWindow):
         self._alerts_timer.timeout.connect(self.refresh_alerts_badge)
         self._alerts_timer.start()
         self.refresh_alerts_badge()
+        self._check_for_updates()
+
+    def _check_for_updates(self) -> None:
+        from services.updater import check_for_update
+        run_api(
+            check_for_update,
+            self._on_update_checked,
+            lambda err: None,
+        )
+
+    def _on_update_checked(self, info: object) -> None:
+        if info:
+            from ui.widgets.toast import show_toast
+            msg = f"{strings.UPDATE_AVAILABLE.format(version=info.version)}\n{strings.UPDATE_AVAILABLE_HINT.format(url=info.download_url)}"
+            show_toast(self, msg, duration=10000)
 
     def _fit_to_screen(self) -> None:
         """Size and center the window for ANY display: preferred 1180×720,

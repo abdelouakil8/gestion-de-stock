@@ -90,6 +90,37 @@ def validate_price_floor(
         )
 
 
-def line_total(unit_price: Decimal, quantity: int) -> Decimal:
-    """Exact line total, normalized to 2 decimal places."""
-    return (unit_price * quantity).quantize(_TWO_PLACES)
+def validate_discount_floor(
+    product: Product,
+    unit_price: Decimal,
+    quantity: int,
+    discount_amount: Decimal,
+    floor: Decimal | None = None,
+) -> None:
+    """Reject a discount that would push the effective per-unit price
+    below the floor (super gros). The discount is applied to the whole
+    line; the effective unit price = (unit_price * qty - discount) / qty.
+    """
+    if discount_amount <= 0:
+        return
+    effective_floor = product.price_super_gros if floor is None else floor
+    gross = unit_price * quantity
+    if discount_amount > gross:
+        raise PriceBelowFloorError(
+            product_name=product.name,
+            floor=effective_floor,
+            attempted=Decimal("0.00"),
+        )
+    if (gross - discount_amount) < (effective_floor * quantity):
+        raise PriceBelowFloorError(
+            product_name=product.name,
+            floor=effective_floor,
+            attempted=((gross - discount_amount) / quantity).quantize(_TWO_PLACES),
+        )
+
+
+def line_total(
+    unit_price: Decimal, quantity: int, discount: Decimal = Decimal("0.00")
+) -> Decimal:
+    """Exact line total: (price × qty) - discount, normalized to 2dp."""
+    return (unit_price * quantity - discount).quantize(_TWO_PLACES)

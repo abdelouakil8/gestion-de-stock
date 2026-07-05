@@ -85,11 +85,35 @@ def lighten(color: str, amount: float) -> str:
     return mix(color, "#FFFFFF", amount)
 
 
-def readable_on(color: str) -> str:
-    """Black or white text, whichever reads better on `color` (WCAG-ish)."""
+def _wcag_luminance(color: str) -> float:
+    """WCAG 2.x relative luminance (gamma-corrected sRGB)."""
+
+    def channel(value: int) -> float:
+        c = value / 255
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
     r, g, b = _hex_to_rgb(color)
-    luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-    return "#0F172A" if luminance > 0.62 else "#FFFFFF"
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+
+
+def contrast_ratio(color_a: str, color_b: str) -> float:
+    """WCAG contrast ratio between two colors (1..21)."""
+    la, lb = _wcag_luminance(color_a), _wcag_luminance(color_b)
+    lighter, darker = max(la, lb), min(la, lb)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def readable_on(color: str) -> str:
+    """White or slate text — whichever has the HIGHER real WCAG contrast.
+
+    Safeguard for the owner-chosen accent (QColorDialog accepts anything):
+    the old fixed-luminance threshold picked white on mid-luminance
+    saturated accents (e.g. the green preset #16A34A) at only ~3:1. Actual
+    ratio comparison always yields the strongest available contrast."""
+    white, slate = "#FFFFFF", NEUTRAL["900"]
+    if contrast_ratio(color, white) >= contrast_ratio(color, slate):
+        return white
+    return slate
 
 
 def is_valid_accent(color: str) -> bool:

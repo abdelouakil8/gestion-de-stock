@@ -10,7 +10,7 @@ from app.schemas.product import (
     ProductReadWithCost,
     ProductUpdate,
 )
-from app.services import images, products
+from app.services import images, import_export, products
 
 router = APIRouter()
 
@@ -125,3 +125,16 @@ def delete_product_image(product_id: UUID, db: DbDep) -> None:
     if product is None:
         raise NotFoundError("produit", product_id)
     images.delete_product_image(db, product)
+
+
+# ----------------------------------------------------------- CSV import
+
+
+@router.post("/import", dependencies=[OwnerPinDep])
+def import_products(store_id: UUID, file: UploadFile, db: DbDep):
+    """Bulk import products from a CSV (semicolon-delimited, UTF-8).
+
+    Existing products matched by barcode are updated; new ones created.
+    Row-level errors never abort the batch."""
+    data = file.file.read()
+    return import_export.import_products_csv(db, store_id, data)

@@ -64,6 +64,13 @@ appels de démarrage dans `main.py`, exécutés avant la création de la fenêtr
 - [👁] « Produits souvent achetés ensemble » : cartes de règles en français lisible (« Les clients qui achètent X prennent aussi Y ») avec confiance/support/lift ; état vide dédié quand pas assez de ventes ; contrôles de plage de dates.
 - [✅] Sans PIN → message unique « Les statistiques nécessitent le code PIN propriétaire » (pas un dialogue par requête).
 
+## Nouveautés de la version actuelle
+- [ ] **Mise en route & Licence** : Suppression du fichier `.env`, lancement de l'application. La fenêtre de bienvenue permet-elle de définir le PIN initial ? Si la licence est expirée ou absente, l'application le signale-t-elle correctement ?
+- [ ] **Visite Guidée** : Depuis les "Réglages", le bouton "Démarrer la visite" ouvre-t-il bien le tutoriel listant les fonctionnalités ?
+- [ ] **Exportation** : Sur l'écran Statistiques, les boutons PDF et Excel génèrent-ils les rapports corrects avec le formatage attendu (devise, colonnes, données concordantes) ?
+- [ ] **Impression thermique (ESC/POS)** : L'imprimante système sélectionnée depuis les réglages et l'option ESC/POS cochée, le tiroir caisse s'ouvre-t-il lors d'une vente en espèces ? Le ticket s'imprime-t-il instantanément au format 80mm ?
+- [ ] **Étiquettes Codes-barres** : Depuis la fenêtre d'édition d'un produit dans l'Inventaire, le bouton "Imprimer l'étiquette" génère-t-il correctement le format 60x40 avec le nom, le prix et le code-barres ?
+
 ## Alertes
 - [✅] Section Stock faible : produits à/sous leur seuil, stock restant en badge, seuil affiché, bouton « Voir le produit » → ouvre le Stock sur la ligne.
 - [✅] Section Crédits en attente : client (nom + téléphone), total/payé/reste, ancienneté en jours (badge neutre < 7 j, orange 7–29 j, rouge ≥ 30 j), triés du plus ancien au plus récent.

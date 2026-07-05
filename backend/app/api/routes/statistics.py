@@ -2,6 +2,7 @@ from datetime import date, datetime, time
 from uuid import UUID
 
 from fastapi import APIRouter, Query
+from fastapi.responses import Response
 from sqlalchemy import select
 
 from app.api.deps import DbDep, OwnerPinDep
@@ -13,13 +14,14 @@ from app.schemas.statistics import (
     CustomerStats,
     FrequentItemset,
     OverviewStats,
+    PaymentMethodBreakdown,
     ProductRef,
     ProductStats,
     StatsSummary,
     TopCustomer,
     TopProduct,
 )
-from app.services import customers, statistics
+from app.services import customers, reports, statistics
 from app.services.analysis import apriori, baskets
 
 router = APIRouter()
@@ -102,6 +104,19 @@ def customer_stats(customer_id: UUID, db: DbDep):
 
 
 @router.get(
+    "/payment-methods",
+    response_model=list[PaymentMethodBreakdown],
+    dependencies=[OwnerPinDep],
+)
+def payment_methods(
+    store_id: UUID, date_from: date, date_to: date, db: DbDep
+) -> list:
+    """Revenue breakdown by payment method (cash/card/mobile/other)."""
+    start, end = _day_bounds(date_from, date_to)
+    return statistics.payment_method_breakdown(db, store_id, start, end)
+
+
+@router.get(
     "/associations", response_model=AssociationsResult, dependencies=[OwnerPinDep]
 )
 def associations(
@@ -159,4 +174,26 @@ def associations(
             )
             for r in result.rules
         ],
+    )
+
+
+@router.get("/report.pdf", dependencies=[OwnerPinDep])
+def report_pdf(store_id: UUID, date_from: date, date_to: date, db: DbDep):
+    start, end = _day_bounds(date_from, date_to)
+    pdf_bytes = reports.build_summary_report_pdf(db, store_id, start, end)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="rapport.pdf"'},
+    )
+
+
+@router.get("/report.xlsx", dependencies=[OwnerPinDep])
+def report_xlsx(store_id: UUID, date_from: date, date_to: date, db: DbDep):
+    start, end = _day_bounds(date_from, date_to)
+    xlsx_bytes = reports.build_summary_report_xlsx(db, store_id, start, end)
+    return Response(
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="rapport.xlsx"'},
     )

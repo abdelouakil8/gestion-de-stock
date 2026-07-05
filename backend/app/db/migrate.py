@@ -30,6 +30,7 @@ from alembic import command
 _PHASE5_REV = "b41c92d7e310"
 _PHASE6_REV = "c9a1e4b7d2f0"
 _PHASE7_REV = "d4f8a1c07e2b"
+_PHASE8_REV = "e5b2c9f4a3d1"
 
 
 def _base_dir() -> Path:
@@ -73,8 +74,14 @@ def prepare_database(engine: Engine) -> None:
         #   phase 6 marker: products.price_detail
         #   earlier       : none -> phase 5
         product_columns = {c["name"] for c in inspector.get_columns("products")}
-        if "product_packagings" in tables:
+        if "suppliers" in tables:
             revision = "head"
+        elif "sale_sequences" in tables:
+            revision = "a1b2c3d4e5f6"
+        elif "refunds" in tables:
+            revision = "f7a3b2c9d4e6"
+        elif "product_packagings" in tables:
+            revision = _PHASE8_REV
         elif "search_text" in product_columns:
             revision = _PHASE7_REV
         elif "price_detail" in product_columns:

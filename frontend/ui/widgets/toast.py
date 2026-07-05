@@ -2,15 +2,21 @@
 
 Modal dialogs remain for confirmations and errors that require a decision;
 everything that just says "ça a marché" goes through show_toast(). One
-toast at a time, auto-dismissed, repositioned on window resize. No
-animations (low-spec target) — appear/disappear is instant.
+toast at a time, auto-dismissed, repositioned on window resize.
+
+Motion language: ONE cheap entrance — a 150 ms position slide (about nine
+repaints of a small child widget, no GPU, no opacity compositing), so the
+toast reads as "arriving" instead of popping. Dismissal stays instant.
 """
 
 import qtawesome as qta
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, Qt, QTimer
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from ui.styles.tokens import ICON_SIZES, SPACING
+
+_SLIDE_MS = 150
+_SLIDE_OFFSET = 12  # px above the resting spot; slides down into place
 
 _ICONS = {"success": "fa5s.check-circle", "error": "fa5s.exclamation-circle"}
 
@@ -43,12 +49,28 @@ class _Toast(QWidget):
         self.reposition()
         self.show()
         self.raise_()
+        self._slide_in()
         QTimer.singleShot(2600, self._dismiss)
 
-    def reposition(self) -> None:
+    def _resting_pos(self) -> QPoint:
         parent = self.parentWidget()
-        if parent is not None:
-            self.move((parent.width() - self.width()) // 2, SPACING["xl"] + 40)
+        if parent is None:
+            return self.pos()
+        return QPoint((parent.width() - self.width()) // 2, SPACING["xl"] + 40)
+
+    def reposition(self) -> None:
+        self.move(self._resting_pos())
+
+    def _slide_in(self) -> None:
+        """150 ms slide-down into place — the app's one entrance motion."""
+        end = self._resting_pos()
+        self.move(end.x(), end.y() - _SLIDE_OFFSET)
+        self._anim = QPropertyAnimation(self, b"pos", self)
+        self._anim.setDuration(_SLIDE_MS)
+        self._anim.setStartValue(self.pos())
+        self._anim.setEndValue(end)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._anim.start()
 
     def _dismiss(self) -> None:
         window = self.window()

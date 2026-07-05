@@ -208,7 +208,17 @@ class ProductDialog(ModalDialog):
         self.active_check.setChecked(True)
 
         form.addRow(strings.PRODUCT_NAME, self.name_input)
-        form.addRow(strings.PRODUCT_BARCODE, self.barcode_input)
+        
+        barcode_row = QHBoxLayout()
+        barcode_row.setContentsMargins(0, 0, 0, 0)
+        barcode_row.addWidget(self.barcode_input, stretch=1)
+        self.btn_print_label = QPushButton(
+            qta.icon("fa5s.barcode", color=NEUTRAL["600"]), strings.PRODUCT_PRINT_LABEL
+        )
+        self.btn_print_label.clicked.connect(self._print_label)
+        self.btn_print_label.setEnabled(bool(details))
+        barcode_row.addWidget(self.btn_print_label)
+        form.addRow(strings.PRODUCT_BARCODE, barcode_row)
         form.addRow(strings.PRODUCT_CATEGORY, self.category_combo)
         form.addRow(strings.PRODUCT_COST_PRICE, self.cost_input)
         form.addRow(strings.PRODUCT_PRICE_DETAIL, self.detail_input)
@@ -291,6 +301,25 @@ class ProductDialog(ModalDialog):
         self._check_price_order()
 
     # ---------------------------------------------------------- packagings
+
+    def _print_label(self) -> None:
+        if not self.details:
+            return
+        from services import printing, label_printer
+        printer = printing.get_selected_printer()
+        
+        product = dict(self.details)
+        product["name"] = self.name_input.text()
+        product["barcode"] = self.barcode_input.text()
+        product["price_detail"] = self.detail_input.value()
+        
+        try:
+            label_printer.print_barcode_label(product, printer, copies=1)
+            from ui.widgets.toast import show_toast
+            show_toast(self, "Étiquette envoyée à l'imprimante.")
+        except Exception as e:
+            from ui.widgets.modal import show_error
+            show_error(self, strings.ERROR_TITLE, f"Erreur d'impression : {e}")
 
     def _add_packaging_row(self, data: dict | None = None) -> None:
         row = _PackagingRow(self._remove_packaging_row, self._check_price_order, data)
@@ -626,14 +655,25 @@ class InventoryScreen(QWidget):
         )
         new_button.setObjectName("Primary")
         new_button.clicked.connect(self._create_product)
-        edit_button = QPushButton(
+        self.edit_button = QPushButton(
             qta.icon("fa5s.pen", color=NEUTRAL["600"]), strings.INVENTORY_EDIT_PRODUCT
         )
-        edit_button.clicked.connect(self._edit_product)
-        archive_button = QPushButton(strings.INVENTORY_ARCHIVE_PRODUCT)
-        archive_button.setObjectName("Danger")
-        archive_button.clicked.connect(self._archive_product)
-        for button in (new_button, edit_button, archive_button):
+        self.edit_button.clicked.connect(self._edit_product)
+        self.archive_button = QPushButton(strings.INVENTORY_ARCHIVE_PRODUCT)
+        self.archive_button.setObjectName("Danger")
+        self.archive_button.clicked.connect(self._archive_product)
+        import_button = QPushButton(
+            qta.icon("fa5s.file-upload", color=NEUTRAL["600"]),
+            strings.IMPORT_BUTTON,
+        )
+        import_button.clicked.connect(self._import_csv)
+        # Error prevention: row-dependent actions stay disabled until a row
+        # is selected instead of scolding with a dialog after the click.
+        self.edit_button.setEnabled(False)
+        self.archive_button.setEnabled(False)
+        for button in (
+            new_button, import_button, self.edit_button, self.archive_button
+        ):
             toolbar.addWidget(button)
         layout.addLayout(toolbar)
 
@@ -675,6 +715,7 @@ class InventoryScreen(QWidget):
         self.table.setColumnWidth(0, THUMB_SIZES["table"] + 14)
         self.table.verticalHeader().setDefaultSectionSize(THUMB_SIZES["table"] + 10)
         self.table.itemDoubleClicked.connect(lambda _: self._open_detail())
+        self.table.itemSelectionChanged.connect(self._on_selection_changed)
 
         self.empty = EmptyState(
             "fa5s.box-open",
@@ -842,6 +883,11 @@ class InventoryScreen(QWidget):
 
     # ------------------------------------------------------------- actions
 
+    def _on_selection_changed(self) -> None:
+        has_selection = 0 <= self.table.selected_row() < len(self.visible_products)
+        self.edit_button.setEnabled(has_selection)
+        self.archive_button.setEnabled(has_selection)
+
     def _selected_product(self) -> dict | None:
         row = self.table.selected_row()
         if row < 0 or row >= len(self.visible_products):
@@ -904,3 +950,42 @@ class InventoryScreen(QWidget):
             lambda _: self.refresh(),
             lambda err: show_error(self, err.message),
         )
+
+    def _import_csv(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, strings.IMPORT_BUTTON, "", strings.IMPORT_FILE_FILTER
+        )
+        if not path:
+            return
+        data = Path(path).read_bytes()
+        run_api(
+            lambda: self.api.import_products_csv(self.store_id, data),
+            self._on_import_done,
+            lambda err: show_error(self, err.message),
+        )
+
+    def _on_import_done(self, result: object) -> None:
+        created = result.get("created", 0)
+        updated = result.get("updated", 0)
+        errors = result.get("errors", [])
+        show_toast(
+            self,
+            strings.IMPORT_DONE_TOAST.format(created=created, updated=updated),
+        )
+        if errors:
+            from ui.widgets.data_table import DataTable
+            from ui.widgets.modal import ModalDialog
+
+            dlg = ModalDialog(strings.IMPORT_DIALOG_TITLE, self)
+            summary = QLabel(
+                f"{strings.IMPORT_CREATED.format(count=created)}  ·  "
+                f"{strings.IMPORT_UPDATED.format(count=updated)}  ·  "
+                f"{strings.IMPORT_ERRORS.format(count=len(errors))}"
+            )
+            dlg.content.addWidget(summary)
+            table = DataTable([strings.IMPORT_COL_ROW, strings.IMPORT_COL_ERROR])
+            table.set_rows([[str(e["row"]), e["message"]] for e in errors])
+            table.setMinimumHeight(200)
+            dlg.content.addWidget(table)
+            dlg.exec()
+        self.refresh()

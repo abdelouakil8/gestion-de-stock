@@ -14,6 +14,7 @@ from decimal import Decimal
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
@@ -67,6 +68,14 @@ class CheckoutPaymentDialog(ModalDialog):
         total_row.addStretch(1)
         total_row.addWidget(total_label)
         self.content.addLayout(total_row)
+
+        method_row = QHBoxLayout()
+        method_row.addWidget(QLabel(strings.PAYMENT_METHOD_LABEL))
+        self.method_combo = QComboBox()
+        for key, label in strings.PAYMENT_METHOD_LABELS.items():
+            self.method_combo.addItem(label, key)
+        method_row.addWidget(self.method_combo, stretch=1)
+        self.content.addLayout(method_row)
 
         self.full_radio = QRadioButton(strings.PAYMENT_FULL)
         self.full_radio.setChecked(True)
@@ -171,9 +180,12 @@ class CheckoutPaymentDialog(ModalDialog):
 
     # ------------------------------------------------------------- accept
 
+    def _selected_method(self) -> str:
+        return self.method_combo.currentData() or "cash"
+
     def accept(self) -> None:
         if self.full_radio.isChecked():
-            self.payment = {"mode": "full"}
+            self.payment = {"mode": "full", "payment_method": self._selected_method()}
             if self.customer:
                 self.payment["customer_id"] = self.customer["id"]
             super().accept()
@@ -216,6 +228,7 @@ class CheckoutPaymentDialog(ModalDialog):
             "mode": "partial",
             "amount_paid": f"{amount:.2f}",
             "customer_id": customer_id,
+            "payment_method": self._selected_method(),
         }
         super().accept()
 
@@ -244,6 +257,14 @@ class RecordPaymentDialog(ModalDialog):
         amount_row.addWidget(self.amount_input, stretch=1)
         self.content.addLayout(amount_row)
 
+        method_row = QHBoxLayout()
+        method_row.addWidget(QLabel(strings.PAYMENT_METHOD_LABEL))
+        self.method_combo = QComboBox()
+        for key, label in strings.PAYMENT_METHOD_LABELS.items():
+            self.method_combo.addItem(label, key)
+        method_row.addWidget(self.method_combo, stretch=1)
+        self.content.addLayout(method_row)
+
         self.ok_button.setText(strings.PAYMENT_CONFIRM)
         self.amount_input.setFocus()
         self.amount_input.selectAll()
@@ -257,8 +278,11 @@ class RecordPaymentDialog(ModalDialog):
             show_error(self, strings.PAYMENT_AMOUNT_TOO_HIGH)
             return
         self.ok_button.setEnabled(False)
+        method = self.method_combo.currentData() or "cash"
         run_api(
-            lambda: self.api.record_payment(self.sale["id"], f"{amount:.2f}"),
+            lambda: self.api.record_payment(
+                self.sale["id"], f"{amount:.2f}", method
+            ),
             self._on_done,
             self._on_error,
         )

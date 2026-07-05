@@ -8,6 +8,10 @@ router = APIRouter()
 
 
 class PinVerifyRequest(BaseModel):
+    pin: str = Field(min_length=0, max_length=64)
+
+
+class PinSetRequest(BaseModel):
     pin: str = Field(min_length=1, max_length=64)
 
 
@@ -34,4 +38,37 @@ def verify(payload: PinVerifyRequest) -> PinVerifyResponse:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "invalid_pin", "message": "Code PIN incorrect."},
         )
+    return PinVerifyResponse(valid=True)
+
+
+@router.get("/status")
+def get_status() -> dict:
+    """Check if the PIN is configured, without triggering auth failures."""
+    return {"configured": settings.pin_hash is not None}
+
+
+@router.post("/set-pin", response_model=PinVerifyResponse)
+def set_pin(payload: PinSetRequest) -> PinVerifyResponse:
+    """One-time wizard setup to set the initial PIN."""
+    if settings.pin_hash is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "pin_already_configured", "message": "Le code PIN est déjà configuré."},
+        )
+        
+    from app.core.security import get_password_hash
+    from app.core.config import RUNTIME_DIR
+    
+    hashed = get_password_hash(payload.pin)
+    
+    env_file = RUNTIME_DIR / ".env"
+    lines = []
+    if env_file.exists():
+        lines = env_file.read_text("utf-8").splitlines()
+        
+    lines = [line for line in lines if not line.startswith("PIN_HASH=")]
+    lines.append(f"PIN_HASH={hashed}")
+    env_file.write_text("\n".join(lines) + "\n", "utf-8")
+    
+    settings.pin_hash = hashed
     return PinVerifyResponse(valid=True)

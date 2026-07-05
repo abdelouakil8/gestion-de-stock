@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
@@ -34,17 +35,20 @@ class SaleItemRead(ReadSchema, SaleItemBase):
     packaging_id: UUID | None = None
     packaging_label: str | None = None
     unit_count: int = 1
+    discount_amount: Money = Decimal("0.00")
 
 
 class PaymentRead(ReadSchema):
     sale_id: UUID
     amount: Money
+    payment_method: str = "cash"
 
 
 class PaymentCreate(BaseModel):
     """Body of POST /sales/{id}/payments — a later payment on a credit sale."""
 
     amount: Money = Field(gt=0)
+    payment_method: str = "cash"
 
 
 class SaleBase(BaseModel):
@@ -71,6 +75,7 @@ class SaleRead(ReadSchema, SaleBase):
     guest_confirmed_at: datetime | None = None
     paid_amount: Money
     balance: Money
+    invoice_number: int | None = None
     items: list[SaleItemRead]
     payments: list[PaymentRead] = []
 
@@ -100,6 +105,7 @@ class CartItem(BaseModel):
     # level, applies THAT packaging's super_gros as the floor, and decrements
     # stock by quantity * packaging.unit_count. None -> current behavior.
     packaging_id: UUID | None = None
+    discount_amount: Money | None = None
 
 
 class PaymentInfo(BaseModel):
@@ -113,6 +119,7 @@ class PaymentInfo(BaseModel):
     mode: Literal["full", "partial"] = "full"
     amount_paid: Money | None = None
     customer_id: UUID | None = None
+    payment_method: str | None = None
 
 
 class CheckoutRequest(BaseModel):

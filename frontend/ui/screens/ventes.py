@@ -13,8 +13,6 @@ server does not model as flags are applied client-side on the fetched page.
 All network goes through run_api; nothing here blocks the UI thread.
 """
 
-import os
-import subprocess
 import tempfile
 from datetime import datetime, time, timedelta
 from decimal import Decimal
@@ -31,6 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from services import printing
 from services.workers import run_api
 from ui import format as fmt
 from ui import strings
@@ -318,9 +317,7 @@ class SaleDetailDialog(ModalDialog):
             self._total_row(strings.SALES_COL_PAID, fmt.fmt_money(sale["paid_amount"]))
         )
         totals.addWidget(
-            self._total_row(
-                strings.SALES_COL_BALANCE, fmt.fmt_money(_balance(sale))
-            )
+            self._total_row(strings.SALES_COL_BALANCE, fmt.fmt_money(_balance(sale)))
         )
         self.content.addLayout(totals)
 
@@ -336,6 +333,12 @@ class SaleDetailDialog(ModalDialog):
         )
         reprint.clicked.connect(self._reprint_receipt)
         self.buttons.addButton(reprint, self.buttons.ButtonRole.ActionRole)
+
+        refund_btn = QPushButton(
+            qta.icon("fa5s.undo", color=NEUTRAL["600"]), strings.REFUND_BUTTON
+        )
+        refund_btn.clicked.connect(self._open_refund)
+        self.buttons.addButton(refund_btn, self.buttons.ButtonRole.ActionRole)
 
     # ------------------------------------------------------------ layout
 
@@ -439,17 +442,24 @@ class SaleDetailDialog(ModalDialog):
         )
 
     def _print_receipt(self, pdf: object) -> None:
-        """Save the PDF and hand it to the default printer via the shell.
-
-        Mirrors CheckoutScreen._print_receipt so a reprint behaves identically.
-        """
+        """Save the PDF and send it to the CONFIGURED printer (Réglages) —
+        same path as CheckoutScreen so a reprint behaves identically."""
         path = Path(tempfile.gettempdir()) / f"recu_{self.sale['id']}.pdf"
         try:
             path.write_bytes(pdf)
-            if os.name == "nt":
-                os.startfile(str(path), "print")  # default printer
-            else:  # dev fallback on non-Windows
-                subprocess.Popen(["xdg-open", str(path)])
+            printing.print_pdf(path, printing.get_selected_printer())
         except OSError as exc:
             logger.warning("Receipt reprint failed: {}", exc)
             show_error(self, strings.RECEIPT_PRINT_FAILED.format(path=path))
+
+    # ------------------------------------------------------------ refund
+
+    def _open_refund(self) -> None:
+        from ui.screens.refund_dialog import RefundDialog
+
+        dialog = RefundDialog(self.api, self.sale, parent=self)
+        if dialog.exec() and dialog.refund_created:
+            self.changed = True
+            show_toast(self, strings.REFUND_CREATED.format(
+                amount=fmt.fmt_money(dialog.refund_amount)
+            ))
