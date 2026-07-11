@@ -5,12 +5,23 @@ Search-and-attach lives in ui.widgets.customer_search.CustomerSearchBox; the
 old CustomerPickerDialog it replaced has been removed."""
 
 import shiboken6
-from PySide6.QtWidgets import QFormLayout, QLineEdit
+from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QVBoxLayout, QWidget
 
 from services.workers import run_api
 from ui import strings
 from ui.styles.tokens import SPACING
 from ui.widgets.modal import ModalDialog, show_error
+
+
+def _labeled_field(label_text: str, widget: QWidget) -> QVBoxLayout:
+    """Label-above-input vertical pair used in every form field."""
+    lbl = QLabel(label_text)
+    lbl.setObjectName("Caption")
+    box = QVBoxLayout()
+    box.setSpacing(SPACING["xs"])
+    box.addWidget(lbl)
+    box.addWidget(widget)
+    return box
 
 
 class CustomerFormDialog(ModalDialog):
@@ -26,20 +37,28 @@ class CustomerFormDialog(ModalDialog):
         self.customer = customer
         self.result_customer: dict | None = None
 
-        form = QFormLayout()
-        form.setSpacing(SPACING["md"])
         self.name_input = QLineEdit()
         self.phone_input = QLineEdit()
         self.note_input = QLineEdit()
-        form.addRow(strings.CUSTOMER_NAME, self.name_input)
-        form.addRow(strings.CUSTOMER_PHONE, self.phone_input)
-        form.addRow(strings.CUSTOMER_NOTE, self.note_input)
-        self.content.addLayout(form)
+        self.level_combo = QComboBox()
+        self.level_combo.addItem(strings.CUSTOMER_PRICE_LEVEL_NONE, None)
+        for value in ("detail", "gros", "super_gros"):
+            self.level_combo.addItem(strings.PRICE_LEVEL_LABELS[value], value)
+
+        self.content.addLayout(_labeled_field(strings.CUSTOMER_NAME, self.name_input))
+        self.content.addLayout(_labeled_field(strings.CUSTOMER_PHONE, self.phone_input))
+        self.content.addLayout(_labeled_field(strings.CUSTOMER_NOTE, self.note_input))
+        self.content.addLayout(
+            _labeled_field(strings.CUSTOMER_DEFAULT_PRICE_LEVEL, self.level_combo)
+        )
 
         if customer:
             self.name_input.setText(customer["name"])
             self.phone_input.setText(customer["phone"])
             self.note_input.setText(customer.get("note") or "")
+            index = self.level_combo.findData(customer.get("default_price_level"))
+            if index >= 0:
+                self.level_combo.setCurrentIndex(index)
         self.name_input.setFocus()
 
     def accept(self) -> None:  # validation + API call, stays open on error
@@ -52,6 +71,7 @@ class CustomerFormDialog(ModalDialog):
             "name": name,
             "phone": phone,
             "note": self.note_input.text().strip() or None,
+            "default_price_level": self.level_combo.currentData(),
         }
         self.ok_button.setEnabled(False)
         if self.customer:

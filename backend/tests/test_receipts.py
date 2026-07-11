@@ -158,8 +158,8 @@ def test_receipt_prints_credit_details_when_enabled(db):
 
     pdf = receipts.build_receipt_pdf(sale, store, row, customer)
     text = pdf_text(pdf)
-    assert b"12.00" in text  # paid
-    assert b"18.00" in text  # remaining
+    assert b"12,00" in text  # paid
+    assert b"18,00" in text  # remaining
     assert b"Ali Benali" in text
     assert b"Reste" in text
 

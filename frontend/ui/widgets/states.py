@@ -71,10 +71,10 @@ class EmptyState(QWidget):
         icon_label.setStyleSheet("background: transparent;")
         layout.addWidget(icon_label)
 
-        title_label = QLabel(title)
-        title_label.setObjectName("EmptyStateText")
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title_label)
+        self._title_label = QLabel(title)
+        self._title_label.setObjectName("EmptyStateText")
+        self._title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._title_label)
 
         if hint:
             hint_label = QLabel(hint)
@@ -88,6 +88,10 @@ class EmptyState(QWidget):
             button.setObjectName("Primary")
             button.clicked.connect(on_action)
             layout.addWidget(button, alignment=Qt.AlignmentFlag.AlignCenter)
+
+    def set_message(self, title: str) -> None:
+        """Update the empty-state title (e.g. a period-dependent message)."""
+        self._title_label.setText(title)
 
 
 class StatefulStack(QStackedWidget):

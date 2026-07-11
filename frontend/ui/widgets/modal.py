@@ -31,6 +31,10 @@ class ModalDialog(QDialog):
         self.setWindowTitle(title)
         self.setModal(True)
         self.setMinimumWidth(440)
+        # Paint the dialog's own background from the stylesheet ($surface)
+        # rather than the (possibly dark) OS palette — see main._apply_theme,
+        # which also installs a full theme-derived QPalette as a backstop.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(
@@ -43,6 +47,7 @@ class ModalDialog(QDialog):
         outer.addWidget(heading)
 
         holder = QWidget()
+        holder.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.content = QVBoxLayout(holder)
         self.content.setContentsMargins(0, 0, SPACING["xs"], 0)
         self.content.setSpacing(SPACING["md"])
@@ -54,6 +59,9 @@ class ModalDialog(QDialog):
         )
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll.setWidget(holder)
+        self._scroll.viewport().setAttribute(
+            Qt.WidgetAttribute.WA_StyledBackground, True
+        )
         outer.addWidget(self._scroll, stretch=1)
 
         self.buttons = QDialogButtonBox()

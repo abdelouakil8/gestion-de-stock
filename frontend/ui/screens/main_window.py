@@ -252,7 +252,12 @@ class MainWindow(QMainWindow):
         )
         self.statistics = StatisticsScreen(api, store["id"])
         self.suppliers_screen = SuppliersScreen(api, store["id"])
-        self.alerts = AlertsScreen(api, store["id"], self._open_product_from_alert)
+        self.alerts = AlertsScreen(
+            api,
+            store["id"],
+            self._open_product_from_alert,
+            self._open_purchase_from_alert,
+        )
         self.settings_screen = SettingsScreen(api, store)
 
         self._nav_buttons: list[NavButton] = []
@@ -261,7 +266,7 @@ class MainWindow(QMainWindow):
             ("fa5s.boxes", strings.NAV_INVENTORY, self.inventory),
             ("fa5s.users", strings.NAV_CUSTOMERS, self.customers),
             ("fa5s.receipt", strings.NAV_SALES, self.ventes),
-            ("fa5s.truck", strings.NAV_SUPPLIERS, self.suppliers_screen),
+            ("fa5s.truck", strings.NAV_PURCHASES, self.suppliers_screen),
             ("fa5s.chart-line", strings.NAV_STATISTICS, self.statistics),
             ("fa5s.bell", strings.NAV_ALERTS, self.alerts),
             ("fa5s.cog", strings.NAV_SETTINGS, self.settings_screen),
@@ -350,6 +355,12 @@ class MainWindow(QMainWindow):
     def _open_product_from_alert(self, product_id: str) -> None:
         self.navigate(self.inventory)
         self.inventory.focus_product(product_id)
+
+    def _open_purchase_from_alert(self, product: dict) -> None:
+        """From a dead-stock row: open Achats & Fournisseurs and start a new
+        purchase order with this product pre-filled as the first line."""
+        self.navigate(self.suppliers_screen)
+        self.suppliers_screen.open_new_purchase_order(prefill_product=product)
 
     # -------------------------------------------------------------- alerts
 

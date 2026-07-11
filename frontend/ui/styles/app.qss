@@ -15,7 +15,7 @@ QWidget {
 
 #TitleBar {
     background: $sidebar;
-    border-bottom: 1px solid $neutral_800;
+    border-bottom: 1px solid $sidebar_hover;
 }
 #TitleBar QLabel {
     background: transparent;
@@ -43,7 +43,7 @@ QWidget {
     font-size: $font_md;
 }
 #TitleBar QPushButton:hover { background: $sidebar_hover; }
-#TitleBar QPushButton:pressed { background: $neutral_700; }
+#TitleBar QPushButton:pressed { background: $sidebar_hover; }
 #TitleBarClose:hover { background: $danger; color: white; }
 #TitleBarClose:pressed { background: $danger_pressed; color: white; }
 
@@ -72,7 +72,7 @@ QWidget {
     min-height: 40px;
 }
 #NavButton:hover { background: $sidebar_hover; }
-#NavButton:pressed { background: $neutral_700; }
+#NavButton:pressed { background: $sidebar_hover; }
 #NavButton:checked { background: $sidebar_hover; }
 #NavButton QLabel { background: transparent; }
 #NavLabel {
@@ -195,6 +195,15 @@ QComboBox QAbstractItemView {
     outline: none;
     padding: 4px;
 }
+/* Give popup items a generous, uniform height so descenders (and Arabic
+   glyphs) are never clipped and every option is fully visible. */
+QComboBox QAbstractItemView::item {
+    min-height: 28px;
+    padding: 4px 10px;
+    border-radius: $radius_sm;
+    color: $text;
+}
+QComboBox QAbstractItemView::item:hover { background: $row_hover; }
 
 /* Spin boxes: stacked buttons with drawn chevrons */
 QSpinBox::up-button, QDoubleSpinBox::up-button, QDateEdit::up-button {
@@ -507,13 +516,19 @@ QLabel#TotalAmount {
     font-weight: 800;
     color: $primary;
 }
-QLabel#ScreenTitle { font-size: $font_title; font-weight: 700; }
-QLabel#DialogTitle { font-size: $font_lg; font-weight: 700; }
+QLabel#ScreenTitle { font-size: $font_title; font-weight: 700; color: $text; }
+QLabel#DialogTitle { font-size: $font_lg; font-weight: 700; color: $text; }
 QLabel#FieldError { color: $danger_text; font-size: $font_sm; font-weight: 600; }
 QLabel#FieldHint { color: $text_muted; font-size: $font_sm; }
-QDialog { background: $surface; border-radius: $radius_lg; }
+QDialog {
+    background: $surface;
+    color: $text;
+}
+QDialog QLabel { background: transparent; color: $text; }
 QDialog > QWidget { background: transparent; }
-QDialog > QScrollArea > QWidget > QWidget { background: transparent; }
+QDialog > QScrollArea { background: $surface; }
+QDialog > QScrollArea > QWidget { background: $surface; }
+QDialog > QScrollArea > QWidget > QWidget { background: $surface; }
 QMessageBox QLabel { font-size: $font_base; }
 
 /* ---- Payment dialog: total band + selectable mode cards ---- */
@@ -541,9 +556,9 @@ QMessageBox QLabel { font-size: $font_base; }
 #MoneyInput { font-size: $font_md; font-weight: 700; min-height: 30px; }
 
 QToolTip {
-    background: $neutral_900;
+    background: $chrome_bg;
     color: $text_on_dark;
-    border: 1px solid $neutral_700;
+    border: 1px solid $chrome_border;
     border-radius: $radius_sm;
     padding: 5px 8px;
     font-size: $font_sm;
@@ -569,9 +584,20 @@ QToolTip {
     border-radius: $radius_md;
     border: 1px solid transparent;
 }
-#Toast[kind="success"] { background: $neutral_900; border-color: $neutral_700; }
+#Toast[kind="success"] { background: $chrome_bg; border-color: $chrome_border; }
 #Toast[kind="error"] { background: $danger_pressed; border-color: $danger; }
+#Toast[kind="warning"] { background: $warning_hover; border-color: $warning; }
 #Toast QLabel { color: white; font-weight: 600; background: transparent; }
+
+/* Outstanding-balance warning banner (Caisse — customer owes money) */
+#BalanceWarning {
+    background: $danger_subtle;
+    color: $danger_text;
+    border: 1px solid $danger;
+    border-radius: $radius_md;
+    padding: 8px 12px;
+    font-weight: 700;
+}
 
 /* Badges / chips */
 #Badge {
@@ -605,11 +631,11 @@ QToolTip {
     background: white;
     border: 1px solid $border;
     border-radius: $radius_sm;
-    color: $neutral_800;
+    color: $paper_ink;
 }
 #ReceiptPaper QLabel {
     background: transparent;
-    color: $neutral_800;
+    color: $paper_ink;
     font-family: "Consolas", "Courier New", monospace;
     font-size: $font_sm;
 }

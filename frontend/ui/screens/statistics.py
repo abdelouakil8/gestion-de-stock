@@ -1,16 +1,20 @@
-"""Statistiques — a modern activity dashboard.
+"""Statistiques — a modern, data-rich activity dashboard.
 
 Range-driven headline KPIs (chiffre d'affaires, bénéfice, ventes, remises)
-with derived insight sublines (panier moyen, marge, % du CA); a per-period
-evolution strip comparing today / semaine / mois / année with the previous
-period; the best sellers; the payment-method split as a proportional share
-bar; and the market-basket association rules ("souvent achetés ensemble").
+each with a delta vs the previous equivalent period; a full-width revenue /
+profit evolution line chart; a financial + stock snapshot (stock value,
+customer credit, supplier debt, out-of-stock); best sellers (by quantity or
+by profit) with margins; sales by category (donut + profitability bars);
+busy hours / weekdays; best customers; dormant stock; and the market-basket
+association rules ("souvent achetés ensemble").
 
 All statistics endpoints are owner data (they derive from cost_price): the
 API requires the PIN, which the client sends automatically when it was
-captured at login.
+captured at login. Every section loads visibly and has a designed empty
+state; charts are hand-drawn (no chart library) and mirror cleanly in RTL.
 """
 
+from datetime import date
 from decimal import Decimal
 
 import qtawesome as qta
@@ -35,6 +39,7 @@ from ui import strings
 from ui.styles.tokens import ICON_SIZES, NEUTRAL, RADIUS, SPACING, THUMB_SIZES
 from ui.widgets.badge import DeltaChip
 from ui.widgets.card import Card, SectionCard
+from ui.widgets.charts import ColumnChart, DonutChart, LineChart, LinePoint
 from ui.widgets.data_table import DataTable
 from ui.widgets.modal import show_error
 from ui.widgets.states import EmptyState, StatefulStack
@@ -47,17 +52,18 @@ _KPI_BLUE = ("#2563EB", "#DBEAFE")
 _KPI_GREEN = ("#16A34A", "#DCFCE7")
 _KPI_VIOLET = ("#7C3AED", "#EDE9FE")
 _KPI_AMBER = ("#D97706", "#FEF3C7")
+_KPI_RED = ("#DC2626", "#FEE2E2")
 
-# Payment-share segment colours (cycled by order).
-_PM_PALETTE = ["#2563EB", "#16A34A", "#D97706", "#7C3AED", "#0D9488", "#DB2777"]
+# Category / ranking colours — kept in sync with the donut palette so the
+# same category reads the same colour across the donut and the margin bars.
+_CAT_PALETTE = ["#2563EB", "#16A34A", "#D97706", "#7C3AED", "#0D9488", "#DB2777"]
 
 
 class KpiCard(Card):
-    """Headline metric: colored icon chip + caption, big value, insight line."""
+    """Headline metric: colored icon chip + caption, big value, and an
+    insight line that can carry a comparison chip (delta vs previous)."""
 
-    def __init__(
-        self, caption: str, icon: str, color: str, bg: str, parent=None
-    ) -> None:
+    def __init__(self, caption, icon, color, bg, show_delta=False, parent=None) -> None:
         super().__init__(parent)
         top = QHBoxLayout()
         top.setSpacing(SPACING["sm"])
@@ -80,10 +86,17 @@ class KpiCard(Card):
         self.value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.body.addWidget(self.value)
 
+        row2 = QHBoxLayout()
+        row2.setSpacing(SPACING["sm"])
+        self.delta = DeltaChip() if show_delta else None
+        if self.delta is not None:
+            self.delta.setToolTip(strings.STATS_VS_PREVIOUS)
+            row2.addWidget(self.delta, 0, Qt.AlignmentFlag.AlignVCenter)
         self.sub = QLabel("")
         self.sub.setObjectName("Muted")
         self.sub.setVisible(False)
-        self.body.addWidget(self.sub)
+        row2.addWidget(self.sub, 1, Qt.AlignmentFlag.AlignVCenter)
+        self.body.addLayout(row2)
         self.body.addStretch(1)
 
     def set_value(self, text: str, sub: str = "", tone: str = "") -> None:
@@ -97,140 +110,78 @@ class KpiCard(Card):
         else:
             self.sub.setVisible(False)
 
-
-class PeriodCard(Card):
-    """One calendar period: revenue + delta vs previous, profit/sales subline."""
-
-    def __init__(self, title: str, parent=None) -> None:
-        super().__init__(parent)
-        caption = QLabel(title.upper())
-        caption.setObjectName("StatCardTitle")
-        self.body.addWidget(caption)
-
-        row = QHBoxLayout()
-        row.setSpacing(SPACING["sm"])
-        self.revenue = QLabel("—")
-        self.revenue.setObjectName("PeriodRevenue")
-        row.addWidget(self.revenue)
-        row.addStretch(1)
-        self.delta = DeltaChip()
-        self.delta.setToolTip(strings.STATS_VS_PREVIOUS)
-        row.addWidget(self.delta, alignment=Qt.AlignmentFlag.AlignVCenter)
-        self.body.addLayout(row)
-
-        self.sub = QLabel("—")
-        self.sub.setObjectName("Muted")
-        self.body.addWidget(self.sub)
-        self.body.addStretch(1)
-
-    def set_period(self, period: dict) -> None:
-        current, previous = period["current"], period["previous"]
-        self.revenue.setText(fmt.fmt_money(current["revenue"]))
-        self.delta.set_delta(
-            Decimal(str(current["revenue"])), Decimal(str(previous["revenue"]))
-        )
-        self.sub.setText(
-            strings.STATS_PERIOD_SUB.format(
-                profit=fmt.fmt_money(current["gross_profit"]),
-                count=current["sales_count"],
-            )
-        )
+    def set_delta(self, current: Decimal, previous: Decimal) -> None:
+        if self.delta is not None:
+            self.delta.set_delta(current, previous)
 
 
-class PaymentShareBar(QWidget):
-    """Payment-method split: one proportional stacked bar + a legend."""
+class RankBars(QWidget):
+    """A list of labelled horizontal bars (category profitability / share).
+
+    Each row is (label, value_text, ratio 0..1, colour): a name on the lead
+    edge, a proportional coloured bar, and the value on the trailing edge —
+    the whole row lives in a layout so it mirrors under RTL."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(SPACING["md"])
-
-        self._bar_holder = QWidget()
-        self._bar = QHBoxLayout(self._bar_holder)
-        self._bar.setContentsMargins(0, 0, 0, 0)
-        self._bar.setSpacing(2)
-        self._bar_holder.setFixedHeight(16)
-        outer.addWidget(self._bar_holder)
-
-        self._legend = QVBoxLayout()
-        self._legend.setSpacing(SPACING["sm"])
-        outer.addLayout(self._legend)
-
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(SPACING["sm"])
         self._empty = QLabel(strings.STATS_NO_DATA)
         self._empty.setObjectName("Muted")
-        outer.addWidget(self._empty)
-        outer.addStretch(1)
+        self._layout.addWidget(self._empty)
+        self._layout.addStretch(1)
 
     def _clear(self) -> None:
-        while self._bar.count():
-            widget = self._bar.takeAt(0).widget()
-            if widget is not None:
-                widget.deleteLater()
-        while self._legend.count():
-            widget = self._legend.takeAt(0).widget()
+        while self._layout.count():
+            item = self._layout.takeAt(0)
+            widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
 
-    def set_data(self, methods: object) -> None:
+    def set_rows(self, rows) -> None:
         self._clear()
-        methods = list(methods or [])
-        total = sum((Decimal(str(m["total"])) for m in methods), Decimal("0"))
-        if not methods or total <= 0:
-            self._bar_holder.setVisible(False)
-            self._empty.setVisible(True)
+        if not rows:
+            self._empty = QLabel(strings.STATS_NO_DATA)
+            self._empty.setObjectName("Muted")
+            self._layout.addWidget(self._empty)
+            self._layout.addStretch(1)
             return
-        self._bar_holder.setVisible(True)
-        self._empty.setVisible(False)
+        for label, value_text, ratio, color in rows:
+            self._layout.addWidget(self._make_row(label, value_text, ratio, color))
+        self._layout.addStretch(1)
 
-        for index, method in enumerate(methods):
-            color = _PM_PALETTE[index % len(_PM_PALETTE)]
-            amount = Decimal(str(method["total"]))
-            share = amount / total
-
-            segment = QFrame()
-            segment.setStyleSheet(f"background: {color}; border-radius: 3px;")
-            self._bar.addWidget(segment, max(1, int(share * 1000)))
-
-            label = strings.PAYMENT_METHOD_LABELS.get(
-                method["payment_method"], method["payment_method"]
-            )
-            self._legend.addWidget(
-                self._legend_row(
-                    color,
-                    label,
-                    fmt.fmt_money(amount),
-                    int(method["count"]),
-                    fmt.fmt_percent(float(share)),
-                )
-            )
-
-    def _legend_row(
-        self, color: str, label: str, amount: str, count: int, pct: str
-    ) -> QWidget:
+    def _make_row(self, label, value_text, ratio, color) -> QWidget:
         row = QWidget()
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(SPACING["sm"])
-        dot = QLabel()
-        dot.setFixedSize(10, 10)
-        dot.setStyleSheet(f"background: {color}; border-radius: 5px;")
-        layout.addWidget(dot, alignment=Qt.AlignmentFlag.AlignVCenter)
         name = QLabel(label)
+        name.setFixedWidth(112)
         name.setStyleSheet("font-weight: 600; background: transparent;")
         layout.addWidget(name)
-        layout.addStretch(1)
-        detail = QLabel(f"{amount}  ·  {count}")
-        detail.setObjectName("Muted")
-        layout.addWidget(detail)
-        percent = QLabel(pct)
-        percent.setStyleSheet("font-weight: 700; background: transparent;")
-        percent.setFixedWidth(48)
-        percent.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        layout.addWidget(percent)
+
+        track = QFrame()
+        track.setFixedHeight(12)
+        track.setStyleSheet(f"background: {NEUTRAL['200']}; border-radius: 6px;")
+        tl = QHBoxLayout(track)
+        tl.setContentsMargins(0, 0, 0, 0)
+        tl.setSpacing(0)
+        fill = QFrame()
+        fill.setStyleSheet(f"background: {color}; border-radius: 6px;")
+        clamped = max(0.0, min(1.0, ratio))
+        tl.addWidget(fill, max(1, int(clamped * 1000)))
+        spacer = QWidget()
+        spacer.setStyleSheet("background: transparent;")
+        tl.addWidget(spacer, max(0, int(round((1 - clamped) * 1000))))
+        layout.addWidget(track, 1)
+
+        value = QLabel(value_text)
+        value.setObjectName("Muted")
+        value.setFixedWidth(72)
+        value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(value)
         return row
 
 
@@ -278,10 +229,20 @@ class StatisticsScreen(QWidget):
         self.store_id = store_id
         self.products_by_id: dict[str, dict] = {}
 
+        # Section state driven by the in-card toggles.
+        self._top_sort = "quantity"
+        self._dead_days = 60
+        self._busy_mode = "hours"
+        self._patterns: dict | None = None
+        self._categories: list | None = None
+        self._cur_summary: dict | None = None
+        self._prev_summary: dict | None = None
+        self._insights: dict | None = None
+        self._top_data: list = []
+
         outer = QVBoxLayout(self)
         outer.setContentsMargins(*[SPACING["xl"]] * 4)
         outer.setSpacing(SPACING["md"])
-
         outer.addLayout(self._build_header())
 
         scroll = QScrollArea()
@@ -292,9 +253,11 @@ class StatisticsScreen(QWidget):
         layout.setSpacing(SPACING["lg"])
 
         layout.addLayout(self._build_kpi_row())
-        layout.addWidget(self._section_heading(strings.STATS_EVOLUTION))
-        layout.addLayout(self._build_period_row())
-        layout.addLayout(self._build_mid_row())
+        layout.addWidget(self._build_trend())
+        layout.addLayout(self._build_snapshot_row())
+        layout.addLayout(self._build_products_row())
+        layout.addLayout(self._build_patterns_row())
+        layout.addLayout(self._build_lower_row())
         layout.addWidget(self._build_associations())
         layout.addStretch(1)
 
@@ -307,7 +270,6 @@ class StatisticsScreen(QWidget):
         box = QVBoxLayout()
         box.setSpacing(SPACING["md"])
 
-        # Row 1 — title + export/refresh actions.
         row1 = QHBoxLayout()
         title_box = QVBoxLayout()
         title_box.setSpacing(0)
@@ -336,14 +298,12 @@ class StatisticsScreen(QWidget):
         row1.addWidget(refresh)
         box.addLayout(row1)
 
-        # Row 2 — period filter toolbar: quick presets + a unified date range.
         row2 = QHBoxLayout()
         row2.addWidget(self._build_presets())
         row2.addStretch(1)
         row2.addWidget(self._build_date_range())
         box.addLayout(row2)
 
-        # Default view = last 30 days, with its preset lit.
         self._preset_buttons["30d"].setChecked(True)
         return box
 
@@ -405,10 +365,32 @@ class StatisticsScreen(QWidget):
         self.date_to.setDisplayFormat("dd/MM/yyyy")
         layout.addWidget(self.date_to)
 
-        # Editing a date by hand means "custom range" — clear the lit preset.
         self.date_from.dateChanged.connect(self._on_manual_date)
         self.date_to.dateChanged.connect(self._on_manual_date)
         return box
+
+    def _make_tabs(self, items, current, on_select):
+        """A small segmented control (reuses the preset pill styling)."""
+        group = QWidget()
+        group.setObjectName("SegmentGroup")
+        group.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        layout = QHBoxLayout(group)
+        layout.setContentsMargins(3, 3, 3, 3)
+        layout.setSpacing(3)
+        button_group = QButtonGroup(group)
+        button_group.setExclusive(True)
+        buttons = {}
+        for key, label in items:
+            button = QPushButton(label)
+            button.setObjectName("SegmentPill")
+            button.setCheckable(True)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.clicked.connect(lambda _=False, k=key: on_select(k))
+            button_group.addButton(button)
+            layout.addWidget(button)
+            buttons[key] = button
+        buttons[current].setChecked(True)
+        return group
 
     def _apply_preset(self, key: str) -> None:
         today = QDate.currentDate()
@@ -428,27 +410,27 @@ class StatisticsScreen(QWidget):
     def _on_manual_date(self, _date: QDate) -> None:
         if getattr(self, "_suppress_manual", False):
             return
-        # Deselect every preset without unchecking programmatically-set ones.
         self._preset_group.setExclusive(False)
         checked = self._preset_group.checkedButton()
         if checked is not None:
             checked.setChecked(False)
         self._preset_group.setExclusive(True)
 
-    def _section_heading(self, text: str) -> QLabel:
-        label = QLabel(text)
-        label.setObjectName("SectionTitle")
-        return label
-
     def _build_kpi_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setSpacing(SPACING["md"])
-        self.kpi_revenue = KpiCard(strings.STATS_REVENUE, "fa5s.coins", *_KPI_BLUE)
-        self.kpi_profit = KpiCard(strings.STATS_PROFIT, "fa5s.chart-line", *_KPI_GREEN)
-        self.kpi_sales = KpiCard(
-            strings.STATS_SALES_COUNT, "fa5s.receipt", *_KPI_VIOLET
+        self.kpi_revenue = KpiCard(
+            strings.STATS_REVENUE, "fa5s.coins", *_KPI_BLUE, show_delta=True
         )
-        self.kpi_discount = KpiCard(strings.STATS_DISCOUNTS, "fa5s.tag", *_KPI_AMBER)
+        self.kpi_profit = KpiCard(
+            strings.STATS_PROFIT, "fa5s.chart-line", *_KPI_GREEN, show_delta=True
+        )
+        self.kpi_sales = KpiCard(
+            strings.STATS_SALES_COUNT, "fa5s.receipt", *_KPI_VIOLET, show_delta=True
+        )
+        self.kpi_discount = KpiCard(
+            strings.STATS_DISCOUNTS, "fa5s.tag", *_KPI_AMBER, show_delta=True
+        )
         for card in (
             self.kpi_revenue,
             self.kpi_profit,
@@ -458,27 +440,57 @@ class StatisticsScreen(QWidget):
             row.addWidget(card, stretch=1)
         return row
 
-    def _build_period_row(self) -> QHBoxLayout:
+    def _build_trend(self) -> QWidget:
+        card = SectionCard(strings.STATS_TREND_TITLE, "fa5s.chart-area")
+        self.line_chart = LineChart()
+        self.line_chart.setMinimumHeight(240)
+        card.body.addWidget(self.line_chart)
+        return card
+
+    def _build_snapshot_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setSpacing(SPACING["md"])
-        self.overview_cards: dict[str, PeriodCard] = {}
-        for key in ("today", "this_week", "this_month", "this_year"):
-            card = PeriodCard(strings.STATS_OVERVIEW_LABELS[key])
-            self.overview_cards[key] = card
+        self.snap_stock = KpiCard(strings.STATS_STOCK_VALUE, "fa5s.boxes", *_KPI_BLUE)
+        self.snap_credit = KpiCard(
+            strings.STATS_CUSTOMER_CREDIT, "fa5s.hand-holding-usd", *_KPI_AMBER
+        )
+        self.snap_supplier = KpiCard(
+            strings.STATS_SUPPLIER_DEBT, "fa5s.truck", *_KPI_VIOLET
+        )
+        self.snap_rupture = KpiCard(
+            strings.STATS_OUT_OF_STOCK, "fa5s.exclamation-triangle", *_KPI_RED
+        )
+        for card in (
+            self.snap_stock,
+            self.snap_credit,
+            self.snap_supplier,
+            self.snap_rupture,
+        ):
             row.addWidget(card, stretch=1)
         return row
 
-    def _build_mid_row(self) -> QHBoxLayout:
+    def _build_products_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setSpacing(SPACING["md"])
 
         top_card = SectionCard(strings.STATS_TOP_PRODUCTS, "fa5s.crown")
+        top_card.header.addWidget(
+            self._make_tabs(
+                [
+                    ("quantity", strings.STATS_SORT_QTY),
+                    ("profit", strings.STATS_SORT_PROFIT),
+                ],
+                self._top_sort,
+                self._set_top_sort,
+            )
+        )
         self.top_table = DataTable(
             [
                 "",
                 strings.STATS_COL_PRODUCT,
                 strings.STATS_COL_QTY,
                 strings.STATS_COL_REVENUE,
+                strings.STATS_COL_MARGIN,
             ]
         )
         self.top_table.horizontalHeader().setSectionResizeMode(
@@ -486,15 +498,111 @@ class StatisticsScreen(QWidget):
         )
         self.top_table.setColumnWidth(0, THUMB_SIZES["table"] + 14)
         self.top_table.verticalHeader().setDefaultSectionSize(THUMB_SIZES["table"] + 10)
-        self.top_table.setMinimumHeight(260)
-        top_card.body.addWidget(self.top_table)
+        self.top_stack = StatefulStack(
+            self.top_table,
+            EmptyState("fa5s.crown", strings.STATS_NO_DATA),
+        )
+        self.top_stack.setMinimumHeight(280)
+        top_card.body.addWidget(self.top_stack)
         row.addWidget(top_card, stretch=3)
 
-        pm_card = SectionCard(strings.STATS_PAYMENT_METHODS, "fa5s.wallet")
-        self.pm_share = PaymentShareBar()
-        pm_card.body.addWidget(self.pm_share)
-        pm_card.body.addStretch(1)
-        row.addWidget(pm_card, stretch=2)
+        cat_card = SectionCard(strings.STATS_CATEGORY_TITLE, "fa5s.layer-group")
+        self.cat_donut = DonutChart()
+        self.cat_donut.setMinimumHeight(240)
+        cat_card.body.addWidget(self.cat_donut)
+        row.addWidget(cat_card, stretch=2)
+        return row
+
+    def _build_patterns_row(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(SPACING["md"])
+
+        busy_card = SectionCard(strings.STATS_BUSY_TITLE, "fa5s.clock")
+        busy_card.header.addWidget(
+            self._make_tabs(
+                [
+                    ("hours", strings.STATS_BUSY_HOURS),
+                    ("days", strings.STATS_BUSY_DAYS),
+                ],
+                self._busy_mode,
+                self._set_busy_mode,
+            )
+        )
+        self.busy_chart = ColumnChart()
+        self.busy_chart.setMinimumHeight(200)
+        busy_card.body.addWidget(self.busy_chart)
+        row.addWidget(busy_card, stretch=1)
+
+        cust_card = SectionCard(strings.STATS_TOP_CUSTOMERS, "fa5s.user-friends")
+        self.cust_table = DataTable(
+            [
+                strings.STATS_COL_CUSTOMER,
+                strings.STATS_COL_PURCHASES,
+                strings.STATS_COL_REVENUE,
+            ]
+        )
+        self.cust_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        for col in (1, 2):
+            self.cust_table.horizontalHeader().setSectionResizeMode(
+                col, QHeaderView.ResizeMode.ResizeToContents
+            )
+        self.cust_stack = StatefulStack(
+            self.cust_table,
+            EmptyState("fa5s.user-friends", strings.STATS_CUSTOMERS_EMPTY),
+        )
+        self.cust_stack.setMinimumHeight(200)
+        cust_card.body.addWidget(self.cust_stack)
+        row.addWidget(cust_card, stretch=1)
+        return row
+
+    def _build_lower_row(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(SPACING["md"])
+
+        dead_card = SectionCard(strings.STATS_DEAD_STOCK_TITLE, "fa5s.hourglass-half")
+        dead_card.header.addWidget(
+            self._make_tabs(
+                [
+                    ("30", strings.STATS_DEAD_30),
+                    ("60", strings.STATS_DEAD_60),
+                    ("90", strings.STATS_DEAD_90),
+                ],
+                str(self._dead_days),
+                self._set_dead_days,
+            )
+        )
+        self.dead_table = DataTable(
+            [
+                strings.STATS_COL_PRODUCT,
+                strings.STATS_COL_STOCK,
+                strings.STATS_COL_TIED,
+                strings.STATS_COL_LAST_SALE,
+            ]
+        )
+        self.dead_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        for col in (1, 2, 3):
+            self.dead_table.horizontalHeader().setSectionResizeMode(
+                col, QHeaderView.ResizeMode.ResizeToContents
+            )
+        self.dead_stack = StatefulStack(
+            self.dead_table,
+            EmptyState("fa5s.hourglass-half", strings.STATS_DEAD_STOCK_EMPTY),
+        )
+        self.dead_stack.setMinimumHeight(200)
+        dead_card.body.addWidget(self.dead_stack)
+        row.addWidget(dead_card, stretch=1)
+
+        margin_card = SectionCard(
+            strings.STATS_CATEGORY_MARGIN_TITLE, "fa5s.percentage"
+        )
+        self.cat_bars = RankBars()
+        margin_card.body.addWidget(self.cat_bars)
+        margin_card.body.addStretch(1)
+        row.addWidget(margin_card, stretch=1)
         return row
 
     def _build_associations(self) -> QWidget:
@@ -515,12 +623,51 @@ class StatisticsScreen(QWidget):
         assoc_card.body.addWidget(self.assoc_stack)
         return assoc_card
 
+    # ---------------------------------------------------------- toggles
+
+    def _set_top_sort(self, sort: str) -> None:
+        self._top_sort = sort
+        date_from, date_to = self._range()
+        self.top_stack.show_loading()
+        run_api(
+            lambda: self.api.stats_top_products(
+                self.store_id, date_from, date_to, sort=sort
+            ),
+            self._on_top,
+            self._on_error,
+        )
+
+    def _set_dead_days(self, days: str) -> None:
+        self._dead_days = int(days)
+        self.dead_stack.show_loading()
+        run_api(
+            lambda: self.api.stats_dead_stock(self.store_id, days=self._dead_days),
+            self._on_dead,
+            self._on_error,
+        )
+
+    def _set_busy_mode(self, mode: str) -> None:
+        self._busy_mode = mode
+        self._render_busy()
+
     # ------------------------------------------------------------- loading
 
     def _range(self) -> tuple[str, str]:
         return (
             self.date_from.date().toString("yyyy-MM-dd"),
             self.date_to.date().toString("yyyy-MM-dd"),
+        )
+
+    def _prev_range(self) -> tuple[str, str]:
+        """The equal-length window immediately before the current one."""
+        d_from = self.date_from.date()
+        d_to = self.date_to.date()
+        length = d_from.daysTo(d_to) + 1
+        prev_to = d_from.addDays(-1)
+        prev_from = prev_to.addDays(-(length - 1))
+        return (
+            prev_from.toString("yyyy-MM-dd"),
+            prev_to.toString("yyyy-MM-dd"),
         )
 
     def export_pdf(self) -> None:
@@ -531,7 +678,7 @@ class StatisticsScreen(QWidget):
             return
         df, dt = self._range()
         run_api(
-            lambda c: c.get_report_pdf(self.store_id, df, dt),
+            lambda: self.api.get_report_pdf(self.store_id, df, dt),
             lambda data: self._save_file(path, data),
             lambda err: show_error(self, strings.ERROR_TITLE, err.message),
         )
@@ -544,7 +691,7 @@ class StatisticsScreen(QWidget):
             return
         df, dt = self._range()
         run_api(
-            lambda c: c.get_report_xlsx(self.store_id, df, dt),
+            lambda: self.api.get_report_xlsx(self.store_id, df, dt),
             lambda data: self._save_file(path, data),
             lambda err: show_error(self, strings.ERROR_TITLE, err.message),
         )
@@ -558,21 +705,20 @@ class StatisticsScreen(QWidget):
 
     def refresh(self) -> None:
         date_from, date_to = self._range()
+        prev_from, prev_to = self._prev_range()
         self._error_shown = False
+        self._cur_summary = None
+        self._prev_summary = None
+
+        self.top_stack.show_loading()
+        self.cust_stack.show_loading()
+        self.dead_stack.show_loading()
+        self.assoc_stack.show_loading()
+
         run_api(
             lambda: self.api.list_products(self.store_id),
             self._on_products,
             lambda err: None,  # thumbnails only; tables still render
-        )
-        run_api(
-            lambda: self.api.stats_overview(self.store_id),
-            self._on_overview,
-            self._on_error,
-        )
-        run_api(
-            lambda: self.api.stats_top_products(self.store_id, date_from, date_to),
-            self._on_top,
-            self._on_error,
         )
         run_api(
             lambda: self.api.stats_summary(self.store_id, date_from, date_to),
@@ -580,48 +726,74 @@ class StatisticsScreen(QWidget):
             self._on_error,
         )
         run_api(
-            lambda: self.api.stats_payment_methods(self.store_id, date_from, date_to),
-            self._on_payment_methods,
+            lambda: self.api.stats_summary(self.store_id, prev_from, prev_to),
+            self._on_prev_summary,
+            lambda err: None,  # comparison is best-effort
+        )
+        run_api(
+            lambda: self.api.stats_daily_evolution(self.store_id, date_from, date_to),
+            self._on_evolution,
             self._on_error,
         )
-        self.assoc_stack.show_loading()
+        run_api(
+            lambda: self.api.stats_top_products(
+                self.store_id, date_from, date_to, sort=self._top_sort
+            ),
+            self._on_top,
+            self._on_error,
+        )
+        run_api(
+            lambda: self.api.stats_category_breakdown(
+                self.store_id, date_from, date_to
+            ),
+            self._on_categories,
+            self._on_error,
+        )
+        run_api(
+            lambda: self.api.stats_sales_patterns(self.store_id, date_from, date_to),
+            self._on_patterns,
+            self._on_error,
+        )
+        run_api(
+            lambda: self.api.stats_top_customers(self.store_id, date_from, date_to),
+            self._on_customers,
+            self._on_error,
+        )
+        run_api(
+            lambda: self.api.stats_customer_insights(self.store_id, date_from, date_to),
+            self._on_customer_insights,
+            lambda err: None,  # a KPI subline only
+        )
+        run_api(
+            lambda: self.api.stats_inventory(self.store_id),
+            self._on_inventory,
+            self._on_error,
+        )
+        run_api(
+            lambda: self.api.stats_financial_snapshot(self.store_id),
+            self._on_financial,
+            self._on_error,
+        )
+        run_api(
+            lambda: self.api.stats_dead_stock(self.store_id, days=self._dead_days),
+            self._on_dead,
+            self._on_error,
+        )
         run_api(
             lambda: self.api.stats_associations(self.store_id, date_from, date_to),
             self._on_associations,
             self._on_assoc_error,
         )
 
+    # ------------------------------------------------------------ handlers
+
     def _on_products(self, products: object) -> None:
         self.products_by_id = {p["id"]: p for p in products}
-
-    def _on_overview(self, overview: object) -> None:
-        for period in overview.get("periods", []):
-            card = self.overview_cards.get(period["period"])
-            if card is not None:
-                card.set_period(period)
-
-    def _on_top(self, top: object) -> None:
-        top = list(top)
-        self.top_table.set_rows(
-            [
-                ["", t["name"], t["quantity_sold"], fmt.fmt_money(t["revenue"])]
-                for t in top
-            ]
-        )
-        for row, entry in enumerate(top):
-            product = self.products_by_id.get(entry["product_id"])
-            thumb = Thumb(THUMB_SIZES["table"])
-            if product:
-                thumb.set_product(product)
-            else:
-                thumb.set_letter(entry["name"])
-            holder = QWidget()
-            holder_layout = QHBoxLayout(holder)
-            holder_layout.setContentsMargins(4, 2, 4, 2)
-            holder_layout.addWidget(thumb, alignment=Qt.AlignmentFlag.AlignCenter)
-            self.top_table.setCellWidget(row, 0, holder)
+        if self._top_data:
+            self._render_top_thumbs(self._top_data)
 
     def _on_summary(self, summary: object) -> None:
+        self._cur_summary = summary
         revenue = Decimal(str(summary.get("revenue", 0)))
         profit = Decimal(str(summary.get("gross_profit", 0)))
         count = int(summary.get("sales_count", 0))
@@ -641,16 +813,242 @@ class StatisticsScreen(QWidget):
             tone=tone,
         )
 
-        self.kpi_sales.set_value(str(count))
+        self._render_sales_card()
 
         discount_share = (discounts / revenue) if revenue else Decimal("0")
         self.kpi_discount.set_value(
             fmt.fmt_money(discounts),
             sub=f"{fmt.fmt_percent(float(discount_share))} {strings.STATS_OF_REVENUE}",
         )
+        self._apply_deltas()
 
-    def _on_payment_methods(self, methods: object) -> None:
-        self.pm_share.set_data(methods)
+    def _on_prev_summary(self, summary: object) -> None:
+        self._prev_summary = summary
+        self._apply_deltas()
+
+    def _apply_deltas(self) -> None:
+        if self._cur_summary is None or self._prev_summary is None:
+            return
+        cur, prev = self._cur_summary, self._prev_summary
+        self.kpi_revenue.set_delta(
+            Decimal(str(cur["revenue"])), Decimal(str(prev["revenue"]))
+        )
+        self.kpi_profit.set_delta(
+            Decimal(str(cur["gross_profit"])), Decimal(str(prev["gross_profit"]))
+        )
+        self.kpi_sales.set_delta(
+            Decimal(int(cur["sales_count"])), Decimal(int(prev["sales_count"]))
+        )
+        self.kpi_discount.set_delta(
+            Decimal(str(cur["total_discounts"])), Decimal(str(prev["total_discounts"]))
+        )
+
+    def _render_sales_card(self) -> None:
+        if self._cur_summary is None:
+            return
+        count = int(self._cur_summary.get("sales_count", 0))
+        sub = ""
+        if self._insights is not None:
+            sub = strings.STATS_CUSTOMERS_SUB.format(
+                active=self._insights.get("active_customers", 0),
+                new=self._insights.get("new_customers", 0),
+            )
+        self.kpi_sales.set_value(str(count), sub=sub)
+
+    def _on_customer_insights(self, insights: object) -> None:
+        self._insights = insights
+        self._render_sales_card()
+
+    def _on_evolution(self, points: object) -> None:
+        series = [
+            LinePoint(
+                day=date.fromisoformat(p["day"]),
+                revenue=Decimal(str(p["revenue"])),
+                profit=Decimal(str(p["profit"])),
+            )
+            for p in points
+        ]
+        self.line_chart.set_data(series)
+
+    def _on_top(self, top: object) -> None:
+        top = list(top)
+        self._top_data = top
+        if not top:
+            self.top_stack.show_empty()
+            return
+        self.top_table.set_rows(
+            [
+                [
+                    "",
+                    t["name"],
+                    t["quantity_sold"],
+                    fmt.fmt_money(t["revenue"]),
+                    self._margin_text(t),
+                ]
+                for t in top
+            ]
+        )
+        self._render_top_thumbs(top)
+        self.top_stack.show_content()
+
+    def _margin_text(self, entry: dict) -> str:
+        revenue = Decimal(str(entry.get("revenue", 0)))
+        profit = Decimal(str(entry.get("profit", 0)))
+        if revenue <= 0:
+            return "—"
+        return fmt.fmt_percent(float(profit / revenue))
+
+    def _render_top_thumbs(self, top: list) -> None:
+        for row, entry in enumerate(top):
+            product = self.products_by_id.get(entry["product_id"])
+            thumb = Thumb(THUMB_SIZES["table"])
+            if product:
+                thumb.set_product(product)
+            else:
+                thumb.set_letter(entry["name"])
+            holder = QWidget()
+            holder_layout = QHBoxLayout(holder)
+            holder_layout.setContentsMargins(4, 2, 4, 2)
+            holder_layout.addWidget(thumb, alignment=Qt.AlignmentFlag.AlignCenter)
+            self.top_table.setCellWidget(row, 0, holder)
+
+    def _on_categories(self, cats: object) -> None:
+        self._categories = list(cats)
+        self._render_categories()
+
+    def _render_categories(self) -> None:
+        cats = self._categories or []
+        ranked = sorted(cats, key=lambda c: Decimal(str(c["revenue"])), reverse=True)
+        # Donut: revenue share, capped to 6 slices + an aggregated "Autres".
+        items = [
+            (c["name"] or strings.STATS_NO_CATEGORY, Decimal(str(c["revenue"])))
+            for c in ranked[:6]
+        ]
+        rest = ranked[6:]
+        if rest:
+            other = sum((Decimal(str(c["revenue"])) for c in rest), Decimal("0"))
+            if other > 0:
+                items.append((strings.STATS_OTHERS, other))
+        self.cat_donut.set_items(items)
+
+        # Profitability bars: top categories by revenue, bar length ∝ margin.
+        shown = ranked[:6]
+        margins = []
+        for c in shown:
+            revenue = Decimal(str(c["revenue"]))
+            profit = Decimal(str(c["profit"]))
+            margins.append(float(profit / revenue) if revenue > 0 else 0.0)
+        max_margin = max(margins, default=0.0) or 1.0
+        rows = []
+        for index, c in enumerate(shown):
+            rows.append(
+                (
+                    c["name"] or strings.STATS_NO_CATEGORY,
+                    fmt.fmt_percent(margins[index]),
+                    margins[index] / max_margin,
+                    _CAT_PALETTE[index % len(_CAT_PALETTE)],
+                )
+            )
+        self.cat_bars.set_rows(rows)
+
+    def _on_patterns(self, patterns: object) -> None:
+        self._patterns = patterns
+        self._render_busy()
+
+    def _render_busy(self) -> None:
+        if not self._patterns:
+            return
+        if self._busy_mode == "days":
+            bars = [
+                (strings.WEEKDAY_SHORT[d["weekday"]], float(d["sales_count"]))
+                for d in self._patterns.get("weekday", [])
+            ]
+        else:
+            bars = [
+                (
+                    strings.STATS_HOUR_LABEL.format(hour=h["hour"]),
+                    float(h["sales_count"]),
+                )
+                for h in self._patterns.get("hourly", [])
+            ]
+        peak_text = ""
+        if bars:
+            peak = max(range(len(bars)), key=lambda i: bars[i][1])
+            if bars[peak][1] > 0:
+                peak_text = bars[peak][0]
+        self.busy_chart.set_data(bars, peak_text)
+
+    def _on_customers(self, customers: object) -> None:
+        customers = list(customers)
+        if not customers:
+            self.cust_stack.show_empty()
+            return
+        self.cust_table.set_rows(
+            [
+                [
+                    c["name"],
+                    c["sales_count"],
+                    fmt.fmt_money(c["revenue"]),
+                ]
+                for c in customers
+            ]
+        )
+        self.cust_stack.show_content()
+
+    def _on_inventory(self, inv: object) -> None:
+        self.snap_stock.set_value(
+            fmt.fmt_money(inv.get("stock_value_cost", 0)),
+            sub=strings.STATS_STOCK_VALUE_RETAIL.format(
+                value=fmt.fmt_money(inv.get("stock_value_retail", 0))
+            ),
+        )
+        out_of_stock = int(inv.get("out_of_stock_count", 0))
+        low_stock = int(inv.get("low_stock_count", 0))
+        self.snap_rupture.set_value(
+            str(out_of_stock),
+            sub=strings.STATS_LOW_STOCK_HINT.format(count=low_stock),
+            tone="danger" if out_of_stock > 0 else "",
+        )
+
+    def _on_financial(self, fin: object) -> None:
+        credit = Decimal(str(fin.get("customer_credit_total", 0)))
+        self.snap_credit.set_value(
+            fmt.fmt_money(credit),
+            sub=strings.STATS_CREDIT_SALES.format(
+                count=int(fin.get("customer_credit_count", 0))
+            ),
+            tone="danger" if credit > 0 else "",
+        )
+        debt = Decimal(str(fin.get("supplier_debt_total", 0)))
+        self.snap_supplier.set_value(
+            fmt.fmt_money(debt),
+            sub=strings.STATS_SUPPLIER_ORDERS.format(
+                count=int(fin.get("supplier_debt_count", 0))
+            ),
+            tone="danger" if debt > 0 else "",
+        )
+
+    def _on_dead(self, items: object) -> None:
+        items = list(items)
+        if not items:
+            self.dead_stack.show_empty()
+            return
+        rows = []
+        for item in items:
+            if item["days_since"] is None:
+                last = strings.STATS_NEVER_SOLD
+            else:
+                last = strings.STATS_DAYS_AGO.format(days=item["days_since"])
+            rows.append(
+                [
+                    item["name"],
+                    item["stock_quantity"],
+                    fmt.fmt_money(item["tied_capital"]),
+                    last,
+                ]
+            )
+        self.dead_table.set_rows(rows)
+        self.dead_stack.show_content()
 
     def _on_associations(self, result: object) -> None:
         while self.rules_layout.count():

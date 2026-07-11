@@ -11,6 +11,8 @@ from collections.abc import Callable
 import qtawesome as qta
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QButtonGroup,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -102,19 +104,83 @@ class _CreditRow(QWidget):
         layout.addWidget(pay)
 
 
+class _DeadStockRow(QFrame):
+    """One dormant product: thumbnail, name/category, stock, age, action."""
+
+    def __init__(self, item: dict, on_create_purchase: Callable[[dict], None]) -> None:
+        super().__init__()
+        self.setObjectName("RuleCard")
+        # QWidget subclass: required for the QSS card background/border.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(
+            SPACING["md"], SPACING["sm"], SPACING["md"], SPACING["sm"]
+        )
+        layout.setSpacing(SPACING["md"])
+
+        thumb = Thumb(THUMB_SIZES["list"])
+        thumb.set_product(
+            {
+                "id": item["product_id"],
+                "name": item["name"],
+                "image_path": item.get("image_path"),
+            }
+        )
+        layout.addWidget(thumb)
+
+        who = QVBoxLayout()
+        who.setSpacing(2)
+        name = QLabel(item["name"])
+        name.setStyleSheet("font-weight: 700; background: transparent;")
+        who.addWidget(name)
+        category = QLabel(item.get("category_name") or strings.ALERTS_NO_CATEGORY)
+        category.setObjectName("Muted")
+        who.addWidget(category)
+        layout.addLayout(who, stretch=1)
+
+        stock = QLabel(
+            strings.ALERTS_DEAD_STOCK_IN_STOCK.format(qty=item["stock_quantity"])
+        )
+        stock.setObjectName("Secondary")
+        layout.addWidget(stock)
+
+        days = item.get("days_since")
+        # Amber below 90 days, red at/after 90 (and for never-sold products).
+        overdue = days is None or days >= 90
+        if days is None:
+            age_text = strings.ALERTS_DEAD_STOCK_NEVER
+        else:
+            age_text = strings.ALERTS_DEAD_STOCK_NOT_SOLD.format(days=days)
+        age = Badge(age_text, "danger" if overdue else "warning")
+        layout.addWidget(age)
+
+        create = QPushButton(
+            qta.icon("fa5s.dolly", color=NEUTRAL["600"]),
+            strings.ALERTS_DEAD_STOCK_CREATE_PO,
+        )
+        create.setObjectName("Secondary")
+        create.clicked.connect(
+            lambda: on_create_purchase({"id": item["product_id"], "name": item["name"]})
+        )
+        layout.addWidget(create)
+
+
 class AlertsScreen(QWidget):
     def __init__(
         self,
         api,
         store_id: str,
         on_view_product: Callable[[str], None],
+        on_create_purchase: Callable[[dict], None],
         parent=None,
     ) -> None:
         super().__init__(parent)
         self.api = api
         self.store_id = store_id
         self.on_view_product = on_view_product
+        self.on_create_purchase = on_create_purchase
         self.low_stock: list[dict] = []
+        self._dead_stock_days = 60
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(*[SPACING["xl"]] * 4)
@@ -186,6 +252,58 @@ class AlertsScreen(QWidget):
         credit_card.body.addWidget(self.credits_stack)
         layout.addWidget(credit_card, stretch=1)
 
+        # -------------------------------------------------- dead stock
+        dead_card = SectionCard(strings.STATS_DEAD_STOCK_TITLE, "fa5s.hourglass-half")
+        self.dead_count_badge = Badge("0", "neutral")
+        dead_card.header.addWidget(self.dead_count_badge)
+        dead_card.header.addWidget(self._build_period_toggle())
+
+        self.dead_holder = QWidget()
+        self.dead_layout = QVBoxLayout(self.dead_holder)
+        self.dead_layout.setContentsMargins(0, 0, 0, 0)
+        self.dead_layout.setSpacing(SPACING["sm"])
+        dead_scroll = QScrollArea()
+        dead_scroll.setWidgetResizable(True)
+        dead_scroll.setWidget(self.dead_holder)
+        self.dead_empty = EmptyState(
+            "fa5s.check-circle",
+            strings.ALERTS_DEAD_STOCK_EMPTY.format(period=self._dead_stock_days),
+            strings.ALERTS_DEAD_STOCK_EMPTY_HINT,
+        )
+        self.dead_stack = StatefulStack(dead_scroll, self.dead_empty)
+        dead_card.body.addWidget(self.dead_stack)
+        layout.addWidget(dead_card, stretch=1)
+
+    def _build_period_toggle(self) -> QWidget:
+        """Segmented 30/60/90-day selector for the dead-stock window."""
+        holder = QWidget()
+        holder.setObjectName("SegmentGroup")
+        holder.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        row = QHBoxLayout(holder)
+        row.setContentsMargins(3, 3, 3, 3)
+        row.setSpacing(3)
+        self._period_group = QButtonGroup(self)
+        self._period_group.setExclusive(True)
+        for days, label in (
+            (30, strings.STATS_DEAD_30),
+            (60, strings.STATS_DEAD_60),
+            (90, strings.STATS_DEAD_90),
+        ):
+            button = QPushButton(label)
+            button.setObjectName("SegmentPill")
+            button.setCheckable(True)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setChecked(days == self._dead_stock_days)
+            button.clicked.connect(lambda _=None, d=days: self._on_period_changed(d))
+            self._period_group.addButton(button)
+            row.addWidget(button)
+        return holder
+
+    def _on_period_changed(self, days: int) -> None:
+        self._dead_stock_days = days
+        self.dead_empty.set_message(strings.ALERTS_DEAD_STOCK_EMPTY.format(period=days))
+        self.reload_dead_stock(days)
+
     # ------------------------------------------------------------- loading
 
     def refresh(self) -> None:
@@ -196,6 +314,36 @@ class AlertsScreen(QWidget):
             self.set_data,
             lambda err: show_error(self, err.message),
         )
+        self.reload_dead_stock(self._dead_stock_days)
+
+    def reload_dead_stock(self, days: int) -> None:
+        self.dead_stack.show_loading()
+        run_api(
+            lambda: self.api.stats_dead_stock(self.store_id, days=days, limit=20),
+            self._on_dead_stock,
+            self._on_dead_stock_error,
+        )
+
+    def _on_dead_stock(self, items: object) -> None:
+        items = list(items or [])
+        self.dead_count_badge.setText(str(len(items)))
+        while self.dead_layout.count():
+            row = self.dead_layout.takeAt(0)
+            if row.widget() is not None:
+                row.widget().deleteLater()
+        for item in items:
+            self.dead_layout.addWidget(_DeadStockRow(item, self.on_create_purchase))
+        self.dead_layout.addStretch(1)
+        if items:
+            self.dead_stack.show_content()
+        else:
+            self.dead_stack.show_empty()
+
+    def _on_dead_stock_error(self, err) -> None:
+        # Dead stock is owner-gated (profit data); a PIN failure just leaves
+        # the section empty rather than interrupting the alerts screen.
+        self.dead_count_badge.setText("0")
+        self.dead_stack.show_empty()
 
     def set_data(self, alerts: object) -> None:
         """Render alerts (also called by the shell's badge poll)."""

@@ -4,6 +4,7 @@ Same commit-or-rollback discipline as finalize_sale: if ANY line fails
 (product not found, etc.) nothing is persisted.
 """
 
+import uuid as _uuid
 from decimal import Decimal
 from uuid import UUID
 
@@ -22,6 +23,7 @@ from app.models.purchase_order import (
     PurchaseOrderItem,
     SupplierPayment,
 )
+from app.models.stock_movement import MovementType
 from app.models.supplier import Supplier
 from app.schemas.supplier import PurchaseOrderCreate
 from app.services import inventory
@@ -30,6 +32,7 @@ from app.services import inventory
 def receive_stock(db: Session, data: PurchaseOrderCreate) -> PurchaseOrder:
     """Create a purchase order and atomically increment stock for each line."""
     try:
+        order_id = _uuid.uuid4()
         supplier = db.scalar(
             select(Supplier).where(
                 Supplier.id == data.supplier_id,
@@ -57,7 +60,13 @@ def receive_stock(db: Session, data: PurchaseOrderCreate) -> PurchaseOrder:
             line_total = (line.unit_cost * line.quantity).quantize(Decimal("0.01"))
             total += line_total
 
-            inventory.increment_stock(db, product.id, line.quantity)
+            inventory.increment_stock(
+                db,
+                product.id,
+                line.quantity,
+                ref_id=order_id,
+                movement_type=MovementType.purchase,
+            )
 
             items.append(
                 PurchaseOrderItem(
@@ -80,6 +89,7 @@ def receive_stock(db: Session, data: PurchaseOrderCreate) -> PurchaseOrder:
             paid = data.payment_amount
 
         order = PurchaseOrder(
+            id=order_id,
             store_id=data.store_id,
             supplier_id=data.supplier_id,
             total_amount=total,

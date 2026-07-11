@@ -140,13 +140,40 @@ def _check_license() -> bool:
     return True
 
 
+def _theme_from_settings(store_settings: dict) -> tuple[str, str, dict]:
+    """(accent, mode, overrides) from a settings payload, dropping blanks."""
+    overrides = {
+        "background": store_settings.get("theme_bg"),
+        "surface": store_settings.get("theme_surface"),
+        "text": store_settings.get("theme_text"),
+        "border": store_settings.get("theme_border"),
+    }
+    return (
+        store_settings.get("theme_accent") or "#2563EB",
+        store_settings.get("theme_mode") or "light",
+        {role: value for role, value in overrides.items() if value},
+    )
+
+
+def _apply_theme(qt_app: QApplication, accent=None, mode=None, overrides=None) -> None:
+    """Apply the full theme: Fusion base, the QSS, and a matching QPalette.
+
+    The palette is derived from the SAME theme as the stylesheet, so the OS
+    light/dark palette can never bleed through a widget the QSS doesn't paint
+    (that was the solid-black dialog background). Works for light AND dark.
+    """
+    qt_app.setStyle("Fusion")
+    qt_app.setStyleSheet(render_qss(accent, mode, overrides))
+    qt_app.setPalette(tokens.build_palette())
+
+
 def main() -> int:
     server = start_api_server()
 
     qt_app = QApplication(sys.argv)
     _install_qt_exception_guard()
     qt_app.setApplicationName(strings.APP_TITLE)
-    qt_app.setStyleSheet(render_qss())
+    _apply_theme(qt_app)  # default theme until the store's settings load
     qt_app.aboutToQuit.connect(lambda: setattr(server, "should_exit", True))
 
     # Dev toggle to verify RTL mirroring before the Arabic language update.
@@ -177,7 +204,8 @@ def main() -> int:
     # blocking call, pre-UI; a failure just keeps the default accent.
     try:
         store_settings = api.get_settings(store["id"])
-        tokens.CURRENT_ACCENT = store_settings.get("theme_accent", "#2563EB")
+        accent, mode, overrides = _theme_from_settings(store_settings)
+        _apply_theme(qt_app, accent, mode, overrides)
 
         from ui.i18n import apply_language
 

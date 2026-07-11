@@ -18,7 +18,10 @@ PHASE5_REV = "b41c92d7e310"
 PHASE6_REV = "c9a1e4b7d2f0"
 PHASE7_REV = "d4f8a1c07e2b"
 PHASE8_REV = "e5b2c9f4a3d1"
-PHASE11_REV = "b2c3d4e5f6a7"  # current head
+PHASE11_REV = "b2c3d4e5f6a7"
+PHASE12_REV = "c3d4e5f6a7b8"
+PHASE13_REV = "d5e6f7a8b9c0"
+PHASE14_REV = "e7f8a9b0c1d2"  # current head
 
 
 @pytest.fixture()
@@ -345,7 +348,7 @@ def test_prepare_database_recognizes_head_marker(alembic_cfg):
         version = conn.exec_driver_sql(
             "SELECT version_num FROM alembic_version"
         ).scalar()
-    assert version == PHASE11_REV
+    assert version == PHASE14_REV
     engine.dispose()
 
 
@@ -375,7 +378,7 @@ def test_prepare_database_upgrades_phase6_legacy_create_all_to_head(alembic_cfg)
         version = conn.exec_driver_sql(
             "SELECT version_num FROM alembic_version"
         ).scalar()
-    assert version == PHASE11_REV
+    assert version == PHASE14_REV
     assert "search_text" in {c["name"] for c in inspector.get_columns("products")}
     assert "product_packagings" in inspector.get_table_names()
     engine.dispose()
@@ -500,7 +503,7 @@ def test_prepare_database_recognizes_phase8_marker(alembic_cfg):
         version = conn.exec_driver_sql(
             "SELECT version_num FROM alembic_version"
         ).scalar()
-    assert version == PHASE11_REV
+    assert version == PHASE14_REV
     assert "product_packagings" in inspector.get_table_names()
     engine.dispose()
 
@@ -530,6 +533,6 @@ def test_prepare_database_upgrades_phase7_legacy_to_phase8(alembic_cfg):
         version = conn.exec_driver_sql(
             "SELECT version_num FROM alembic_version"
         ).scalar()
-    assert version == PHASE11_REV
+    assert version == PHASE14_REV
     assert "product_packagings" in inspector.get_table_names()
     engine.dispose()

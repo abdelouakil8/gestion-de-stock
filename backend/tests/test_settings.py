@@ -18,6 +18,8 @@ def test_get_creates_defaults_once(db):
     assert row.show_credit_details is True
     assert row.ui_language == "fr"
     assert row.theme_accent == "#2563EB"
+    assert row.theme_mode == "light"
+    assert row.theme_bg is None and row.theme_surface is None
 
     again = settings_service.get_settings(db, store.id)
     assert again.id == row.id  # same row, not a duplicate
@@ -41,6 +43,9 @@ def test_update_round_trip(db):
             show_credit_details=False,
             ui_language="ar",
             theme_accent="#A1B2C3",
+            theme_mode="dark",
+            theme_bg="#101418",
+            theme_surface="#1B2430",
         ),
     )
     row = settings_service.get_settings(db, store.id)
@@ -51,6 +56,9 @@ def test_update_round_trip(db):
     assert row.show_credit_details is False
     assert row.ui_language == "ar"
     assert row.theme_accent == "#A1B2C3"
+    assert row.theme_mode == "dark"
+    assert row.theme_bg == "#101418"
+    assert row.theme_surface == "#1B2430"
 
     # Partial update touches only the submitted field.
     settings_service.update_settings(db, store.id, SettingsUpdate(ui_language="fr"))
@@ -66,3 +74,9 @@ def test_schema_validation_rejects_bad_values():
     with pytest.raises(ValueError):
         SettingsUpdate(theme_accent="#12345")  # too short
     assert SettingsUpdate(theme_accent="#abcDEF").theme_accent == "#abcDEF"
+    with pytest.raises(ValueError):
+        SettingsUpdate(theme_mode="blue")  # only light | dark
+    with pytest.raises(ValueError):
+        SettingsUpdate(theme_bg="navy")  # must be a hex color
+    assert SettingsUpdate(theme_mode="dark").theme_mode == "dark"
+    assert SettingsUpdate(theme_surface="#0A0A0A").theme_surface == "#0A0A0A"

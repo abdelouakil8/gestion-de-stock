@@ -10,7 +10,8 @@ from app.schemas.product import (
     ProductReadWithCost,
     ProductUpdate,
 )
-from app.services import images, import_export, products
+from app.schemas.stock_movement import StockMovementPage
+from app.services import images, import_export, products, stock_movements
 
 router = APIRouter()
 
@@ -117,6 +118,21 @@ def get_product_image(product_id: UUID, db: DbDep) -> Response:
     return Response(
         content=path.read_bytes(), media_type=images.image_media_type(product)
     )
+
+
+@router.get("/{product_id}/movements", response_model=StockMovementPage)
+def list_product_movements(
+    product_id: UUID,
+    store_id: UUID,
+    db: DbDep,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict:
+    """Paginated movement ledger for one product, newest first."""
+    items, total = stock_movements.list_movements(
+        db, store_id=store_id, product_id=product_id, limit=limit, offset=offset
+    )
+    return {"items": items, "total": total}
 
 
 @router.delete("/{product_id}/image", status_code=204, dependencies=[OwnerPinDep])

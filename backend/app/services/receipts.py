@@ -31,6 +31,37 @@ _DEFAULT_FOOTER = "Merci de votre visite !"
 FONT_DIR = Path(__file__).resolve().parents[1] / "assets" / "fonts"
 pdfmetrics.registerFont(TTFont("Amiri", str(FONT_DIR / "Amiri-Regular.ttf")))
 
+_RECEIPT_I18N: dict[str, dict[str, str]] = {
+    "fr": {
+        "tel": "Tél :",
+        "date_line": "Le {date}",
+        "ticket_n": "Ticket N°",
+        "total": "TOTAL",
+        "paid": "Payé",
+        "balance": "Reste à payer",
+        "client": "Client :",
+        "reason": "Motif :",
+        "avoir": "AVOIR",
+        "vente_n": "Vente N°",
+        "avoir_n": "Avoir N°",
+        "total_avoir": "TOTAL AVOIR",
+    },
+    "ar": {
+        "tel": "هاتف:",
+        "date_line": "{date}",
+        "ticket_n": "تذكرة رقم",
+        "total": "المجموع",
+        "paid": "المدفوع",
+        "balance": "المتبقي",
+        "client": "العميل:",
+        "reason": "السبب:",
+        "avoir": "إشعار دائن",
+        "vente_n": "بيع رقم",
+        "avoir_n": "إشعار رقم",
+        "total_avoir": "مجموع الإشعار",
+    },
+}
+
 
 def _shape_arabic(text: str) -> str:
     """Shape and reorder Arabic text for ReportLab rendering."""
@@ -62,6 +93,15 @@ def _safe(text: str, is_arabic: bool = False) -> str:
     if is_arabic:
         return _shape_arabic(text)
     return text.encode("latin-1", "replace").decode("latin-1")
+
+
+def _fmt_money(amount: Decimal, is_arabic: bool = False) -> str:
+    """French-style monetary format: comma decimal, NBSP thousands, DA/دج suffix."""
+    value = Decimal(str(amount)).quantize(Decimal("0.01"))
+    text = f"{value:,.2f}"
+    formatted = text.replace(",", " ").replace(".", ",")
+    symbol = "دج" if is_arabic else "DA"
+    return f"{formatted} {symbol}"
 
 
 def build_receipt_pdf(
@@ -103,6 +143,8 @@ def build_receipt_pdf(
     y = height - _MARGIN
 
     is_arabic = bool(settings and settings.ui_language == "ar")
+    lang = (settings.ui_language if settings else None) or "fr"
+    i18n = _RECEIPT_I18N.get(lang, _RECEIPT_I18N["fr"])
     default_font = "Amiri" if is_arabic else "Helvetica"
     bold_font = "Amiri" if is_arabic else "Helvetica-Bold"
 
@@ -146,17 +188,17 @@ def build_receipt_pdf(
 
     line(shop_name, font="Helvetica-Bold", size=12, center=True)
     if settings and settings.phone:
-        line(f"Tél : {settings.phone}", size=8, center=True)
+        line(f"{i18n['tel']} {settings.phone}", size=8, center=True)
     if settings and settings.address:
         line(settings.address, size=8, center=True)
     created = sale.created_at.strftime("%d/%m/%Y %H:%M") if sale.created_at else ""
-    line(f"Le {created}", size=8, center=True)
+    line(i18n["date_line"].format(date=created), size=8, center=True)
     ticket_num = (
         f"{sale.invoice_number:06d}"
         if sale.invoice_number
         else str(sale.id)[:8].upper()
     )
-    line(f"Ticket N° {ticket_num}", size=8, center=True)
+    line(f"{i18n['ticket_n']} {ticket_num}", size=8, center=True)
     line("-" * 42)
 
     total_check = Decimal("0.00")
@@ -172,12 +214,12 @@ def build_receipt_pdf(
             name = name[:37] + "…"
         line(name, font="Helvetica-Bold")
         line_right(
-            f"  {item.quantity} x {item.unit_price_applied}",
-            f"{item.line_total}",
+            f"  {item.quantity} x {_fmt_money(item.unit_price_applied, is_arabic)}",
+            _fmt_money(item.line_total, is_arabic),
         )
         discount = getattr(item, "discount_amount", None) or Decimal("0")
         if discount > 0:
-            line(f"  Remise : -{discount}", size=8)
+            line(f"  Remise : -{_fmt_money(discount, is_arabic)}", size=8)
         # Show the base-unit breakdown for packagings (e.g. "2 x 24 = 48 u.")
         # so the merchant sees how many base units left the shelf.
         unit_count = getattr(item, "unit_count", 1) or 1
@@ -190,15 +232,20 @@ def build_receipt_pdf(
         total_check += item.line_total
 
     line("-" * 42)
-    line_right("TOTAL", f"{sale.total_amount}", font="Helvetica-Bold", size=12)
+    line_right(
+        i18n["total"],
+        _fmt_money(sale.total_amount, is_arabic),
+        font="Helvetica-Bold",
+        size=12,
+    )
 
     if show_credit:
         if customer is not None:
-            line(f"Client : {customer.name}")
-        line_right("Payé", f"{sale.paid_amount}")
+            line(f"{i18n['client']} {customer.name}")
+        line_right(i18n["paid"], _fmt_money(sale.paid_amount, is_arabic))
         line_right(
-            "Reste à payer",
-            f"{sale.total_amount - sale.paid_amount}",
+            i18n["balance"],
+            _fmt_money(sale.total_amount - sale.paid_amount, is_arabic),
             font="Helvetica-Bold",
         )
 
@@ -231,6 +278,8 @@ def build_refund_receipt_pdf(
     y = height - _MARGIN
 
     is_arabic = bool(settings and settings.ui_language == "ar")
+    lang = (settings.ui_language if settings else None) or "fr"
+    i18n = _RECEIPT_I18N.get(lang, _RECEIPT_I18N["fr"])
     default_font = "Amiri" if is_arabic else "Helvetica"
     bold_font = "Amiri" if is_arabic else "Helvetica-Bold"
 
@@ -270,21 +319,21 @@ def build_refund_receipt_pdf(
             pdf.drawRightString(_WIDTH - _MARGIN, y, safe_right)
         y -= _LINE
 
-    line("AVOIR", font="Helvetica-Bold", size=14, center=True)
+    line(i18n["avoir"], font="Helvetica-Bold", size=14, center=True)
     line(shop_name, font="Helvetica-Bold", size=10, center=True)
     if settings and settings.phone:
-        line(f"Tél : {settings.phone}", size=8, center=True)
+        line(f"{i18n['tel']} {settings.phone}", size=8, center=True)
     if settings and settings.address:
         line(settings.address, size=8, center=True)
     created = refund.created_at.strftime("%d/%m/%Y %H:%M") if refund.created_at else ""
-    line(f"Le {created}", size=8, center=True)
-    line(f"Avoir N° {str(refund.id)[:8].upper()}", size=8, center=True)
+    line(i18n["date_line"].format(date=created), size=8, center=True)
+    line(f"{i18n['avoir_n']} {str(refund.id)[:8].upper()}", size=8, center=True)
     sale_num = (
         f"{sale.invoice_number:06d}"
         if sale.invoice_number
         else str(sale.id)[:8].upper()
     )
-    line(f"Vente N° {sale_num}", size=8, center=True)
+    line(f"{i18n['vente_n']} {sale_num}", size=8, center=True)
     line("-" * 42)
 
     for ri in items:
@@ -296,16 +345,21 @@ def build_refund_receipt_pdf(
             name = name[:37] + "…"
         line(name, font="Helvetica-Bold")
         line_right(
-            f"  {ri.quantity} x {ri.unit_price_refunded}",
-            f"-{ri.line_total}",
+            f"  {ri.quantity} x {_fmt_money(ri.unit_price_refunded, is_arabic)}",
+            f"-{_fmt_money(ri.line_total, is_arabic)}",
         )
 
     line("-" * 42)
-    line_right("TOTAL AVOIR", f"-{refund.total_amount}", font="Helvetica-Bold", size=12)
+    line_right(
+        i18n["total_avoir"],
+        f"-{_fmt_money(refund.total_amount, is_arabic)}",
+        font="Helvetica-Bold",
+        size=12,
+    )
 
     if refund.reason:
         y -= _LINE / 2
-        line(f"Motif : {refund.reason}", size=8)
+        line(f"{i18n['reason']} {refund.reason}", size=8)
 
     pdf.showPage()
     pdf.save()

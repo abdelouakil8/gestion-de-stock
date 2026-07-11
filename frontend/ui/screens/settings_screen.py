@@ -33,8 +33,14 @@ from PySide6.QtWidgets import (
 from services import printing
 from services.workers import run_api
 from ui import strings
-from ui.styles import tokens
-from ui.styles.tokens import ACCENT_PRESETS, NEUTRAL, SPACING, render_qss
+from ui.styles.tokens import (
+    ACCENT_PRESETS,
+    NEUTRAL,
+    SPACING,
+    build_palette,
+    render_qss,
+    semantic_defaults,
+)
 from ui.widgets.card import SectionCard
 from ui.widgets.modal import ModalDialog, show_error, show_info
 from ui.widgets.toast import show_toast
@@ -219,6 +225,18 @@ class SettingsScreen(QWidget):
         self.store_name = store.get("name", "")
         self.settings: dict = {}
         self._accent = None  # currently chosen (unsaved) accent
+        self._mode = "light"
+        self._language = "fr"
+        # Per-role custom overrides (None = follow the mode default).
+        self._overrides: dict[str, str | None] = {
+            "background": None,
+            "surface": None,
+            "text": None,
+            "border": None,
+        }
+        self._color_chips: dict[str, QPushButton] = {}
+        self._mode_buttons: dict[str, QPushButton] = {}
+        self._lang_buttons: dict[str, QPushButton] = {}
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(*[SPACING["xl"]] * 4)
@@ -274,10 +292,16 @@ class SettingsScreen(QWidget):
 
         # ---------------------------------------------------- language
         language_card = SectionCard(strings.SETTINGS_LANGUAGE_SECTION, "fa5s.language")
-        self.language_combo = QComboBox()
-        self.language_combo.addItem(strings.SETTINGS_LANGUAGE_FR, "fr")
-        self.language_combo.addItem(strings.SETTINGS_LANGUAGE_AR, "ar")
-        language_card.body.addWidget(self.language_combo)
+        language_card.body.addWidget(
+            self._segmented(
+                [
+                    ("fr", strings.SETTINGS_LANGUAGE_FR),
+                    ("ar", strings.SETTINGS_LANGUAGE_AR),
+                ],
+                self._lang_buttons,
+                self._pick_language,
+            )
+        )
         left.addWidget(language_card)
 
         # ------------------------------------------------------ printer
@@ -355,8 +379,31 @@ class SettingsScreen(QWidget):
         tour_card.body.addWidget(tour_btn, alignment=Qt.AlignmentFlag.AlignLeft)
         left.addWidget(tour_card)
 
-        # ------------------------------------------------------ accent
-        accent_card = SectionCard(strings.SETTINGS_ACCENT_SECTION, "fa5s.palette")
+        # -------------------------------------------------- appearance
+        appearance_card = SectionCard(
+            strings.SETTINGS_APPEARANCE_SECTION, "fa5s.palette"
+        )
+
+        mode_row = QHBoxLayout()
+        mode_label = QLabel(strings.SETTINGS_THEME_MODE)
+        mode_label.setObjectName("Caption")
+        mode_row.addWidget(mode_label)
+        mode_row.addStretch(1)
+        mode_row.addWidget(
+            self._segmented(
+                [
+                    ("light", strings.SETTINGS_MODE_LIGHT),
+                    ("dark", strings.SETTINGS_MODE_DARK),
+                ],
+                self._mode_buttons,
+                self._pick_mode,
+            )
+        )
+        appearance_card.body.addLayout(mode_row)
+
+        accent_label = QLabel(strings.SETTINGS_ACCENT_LABEL)
+        accent_label.setObjectName("Caption")
+        appearance_card.body.addWidget(accent_label)
         swatch_row = QHBoxLayout()
         swatch_row.setSpacing(SPACING["sm"])
         self._swatch_group = QButtonGroup(self)
@@ -376,8 +423,23 @@ class SettingsScreen(QWidget):
         custom.clicked.connect(self._pick_custom_accent)
         swatch_row.addWidget(custom)
         swatch_row.addStretch(1)
-        accent_card.body.addLayout(swatch_row)
-        left.addWidget(accent_card)
+        appearance_card.body.addLayout(swatch_row)
+
+        custom_label = QLabel(strings.SETTINGS_CUSTOM_COLORS)
+        custom_label.setObjectName("Caption")
+        appearance_card.body.addWidget(custom_label)
+        for role, text in (
+            ("background", strings.SETTINGS_COLOR_BG),
+            ("surface", strings.SETTINGS_COLOR_SURFACE),
+            ("text", strings.SETTINGS_COLOR_TEXT),
+            ("border", strings.SETTINGS_COLOR_BORDER),
+        ):
+            appearance_card.body.addLayout(self._color_row(role, text))
+        custom_hint = QLabel(strings.SETTINGS_CUSTOM_HINT)
+        custom_hint.setObjectName("FieldHint")
+        custom_hint.setWordWrap(True)
+        appearance_card.body.addWidget(custom_hint)
+        left.addWidget(appearance_card)
 
         # -------------------------------------------------- danger zone
         danger_card = SectionCard(
@@ -428,12 +490,25 @@ class SettingsScreen(QWidget):
         self.address_input.setText(settings.get("address") or "")
         self.footer_input.setText(settings.get("footer_message") or "")
         self.credit_check.setChecked(bool(settings.get("show_credit_details", True)))
-        index = self.language_combo.findData(settings.get("ui_language", "fr"))
-        self.language_combo.setCurrentIndex(max(index, 0))
+        self._language = settings.get("ui_language", "fr")
+        lang_button = self._lang_buttons.get(self._language)
+        if lang_button is not None:
+            lang_button.setChecked(True)
         self._accent = settings.get("theme_accent")
         swatch = self._swatches.get(self._accent or "")
         if swatch is not None:
             swatch.setChecked(True)
+        self._mode = settings.get("theme_mode", "light") or "light"
+        mode_button = self._mode_buttons.get(self._mode)
+        if mode_button is not None:
+            mode_button.setChecked(True)
+        self._overrides = {
+            "background": settings.get("theme_bg"),
+            "surface": settings.get("theme_surface"),
+            "text": settings.get("theme_text"),
+            "border": settings.get("theme_border"),
+        }
+        self._refresh_color_chips()
         self._update_preview()
 
     # ------------------------------------------------------------- preview
@@ -447,14 +522,64 @@ class SettingsScreen(QWidget):
             show_credit=self.credit_check.isChecked(),
         )
 
-    # -------------------------------------------------------------- accent
+    # ---------------------------------------------------------- appearance
+
+    def _segmented(self, items, registry, on_select) -> QWidget:
+        """A small segmented control (iOS-style pill track, reuses the QSS)."""
+        group = QWidget()
+        group.setObjectName("SegmentGroup")
+        group.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        layout = QHBoxLayout(group)
+        layout.setContentsMargins(3, 3, 3, 3)
+        layout.setSpacing(3)
+        button_group = QButtonGroup(group)
+        button_group.setExclusive(True)
+        for key, label in items:
+            button = QPushButton(label)
+            button.setObjectName("SegmentPill")
+            button.setCheckable(True)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.clicked.connect(lambda _=False, k=key: on_select(k))
+            button_group.addButton(button)
+            layout.addWidget(button)
+            registry[key] = button
+        return group
+
+    def _color_row(self, role: str, label_text: str):
+        row = QHBoxLayout()
+        row.setSpacing(SPACING["sm"])
+        label = QLabel(label_text)
+        label.setObjectName("Secondary")
+        row.addWidget(label)
+        row.addStretch(1)
+        chip = QPushButton()
+        chip.setObjectName("Swatch")
+        chip.setCursor(Qt.CursorShape.PointingHandCursor)
+        chip.clicked.connect(partial(self._pick_role_color, role))
+        self._color_chips[role] = chip
+        row.addWidget(chip)
+        reset = QPushButton(qta.icon("fa5s.undo", color=NEUTRAL["500"]), "")
+        reset.setObjectName("Ghost")
+        reset.setToolTip(strings.SETTINGS_COLOR_RESET)
+        reset.clicked.connect(partial(self._reset_role_color, role))
+        row.addWidget(reset)
+        return row
+
+    def _pick_language(self, lang: str) -> None:
+        self._language = lang
+
+    def _pick_mode(self, mode: str) -> None:
+        self._mode = mode
+        self._refresh_color_chips()
+        self._apply_live_theme()
 
     def _pick_accent(self, color: str) -> None:
         self._accent = color
+        self._apply_live_theme()
 
     def _pick_custom_accent(self) -> None:
         initial = QColor(self._accent) if self._accent else QColor("#2563EB")
-        color = QColorDialog.getColor(initial, self, strings.SETTINGS_ACCENT_SECTION)
+        color = QColorDialog.getColor(initial, self, strings.SETTINGS_ACCENT_LABEL)
         if color.isValid():
             self._accent = color.name().upper()
             checked = self._swatch_group.checkedButton()
@@ -462,6 +587,38 @@ class SettingsScreen(QWidget):
                 self._swatch_group.setExclusive(False)
                 checked.setChecked(False)
                 self._swatch_group.setExclusive(True)
+            self._apply_live_theme()
+
+    def _pick_role_color(self, role: str) -> None:
+        current = self._overrides.get(role) or semantic_defaults(self._mode)[role]
+        color = QColorDialog.getColor(
+            QColor(current), self, strings.SETTINGS_CUSTOM_COLORS
+        )
+        if color.isValid():
+            self._overrides[role] = color.name().upper()
+            self._refresh_color_chips()
+            self._apply_live_theme()
+
+    def _reset_role_color(self, role: str) -> None:
+        self._overrides[role] = None
+        self._refresh_color_chips()
+        self._apply_live_theme()
+
+    def _refresh_color_chips(self) -> None:
+        defaults = semantic_defaults(self._mode)
+        for role, chip in self._color_chips.items():
+            color = self._overrides.get(role) or defaults[role]
+            chip.setStyleSheet(f"#Swatch {{ background: {color}; }}")
+            chip.setToolTip(color)
+
+    def _apply_live_theme(self) -> None:
+        """Re-theme the whole app immediately (a live preview of the choices)."""
+        app = QApplication.instance()
+        if app is None:
+            return
+        overrides = {k: v for k, v in self._overrides.items() if v}
+        app.setStyleSheet(render_qss(self._accent, self._mode, overrides))
+        app.setPalette(build_palette())
 
     # ---------------------------------------------------------- actions
 
@@ -534,7 +691,12 @@ class SettingsScreen(QWidget):
             "address": self.address_input.text().strip() or None,
             "footer_message": self.footer_input.text().strip() or None,
             "show_credit_details": self.credit_check.isChecked(),
-            "ui_language": self.language_combo.currentData() or "fr",
+            "ui_language": self._language,
+            "theme_mode": self._mode,
+            "theme_bg": self._overrides.get("background"),
+            "theme_surface": self._overrides.get("surface"),
+            "theme_text": self._overrides.get("text"),
+            "theme_border": self._overrides.get("border"),
         }
         if self._accent:
             payload["theme_accent"] = self._accent
@@ -551,12 +713,23 @@ class SettingsScreen(QWidget):
         self.settings = dict(settings)
         new_lang = self.settings.get("ui_language", "fr")
 
-        # Re-theme live from the saved accent — no restart needed.
-        accent = self.settings.get("theme_accent")
+        # Re-theme live from the saved theme (authoritative) — no restart.
         app = QApplication.instance()
-        if app is not None and accent:
-            tokens.CURRENT_ACCENT = accent
-            app.setStyleSheet(render_qss())
+        if app is not None:
+            overrides = {
+                "background": self.settings.get("theme_bg"),
+                "surface": self.settings.get("theme_surface"),
+                "text": self.settings.get("theme_text"),
+                "border": self.settings.get("theme_border"),
+            }
+            app.setStyleSheet(
+                render_qss(
+                    self.settings.get("theme_accent"),
+                    self.settings.get("theme_mode", "light"),
+                    {k: v for k, v in overrides.items() if v},
+                )
+            )
+            app.setPalette(build_palette())
 
         if old_lang != new_lang:
             from ui.i18n import apply_language

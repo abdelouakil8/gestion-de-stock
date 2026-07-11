@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QInputDialog,
@@ -28,8 +29,10 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QStackedWidget,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -38,12 +41,12 @@ from services import image_cache
 from services.workers import run_api
 from ui import format as fmt
 from ui import strings
-from ui.styles.tokens import NEUTRAL, SPACING, THUMB_SIZES
+from ui.styles.tokens import ICON_SIZES, NEUTRAL, SEMANTIC, SPACING, THUMB_SIZES
 from ui.widgets.badge import Badge
 from ui.widgets.bars import BarChart
 from ui.widgets.data_table import DataTable
 from ui.widgets.modal import ModalDialog, ask_confirm, show_error
-from ui.widgets.states import EmptyState
+from ui.widgets.states import EmptyState, StatefulStack
 from ui.widgets.thumb import Thumb
 from ui.widgets.toast import show_toast
 
@@ -509,13 +512,135 @@ class ProductDialog(ModalDialog):
         show_error(self, err.message)
 
 
+def _movement_type_label(key: str) -> str:
+    return {
+        "sale": strings.MOVEMENT_TYPE_SALE,
+        "purchase": strings.MOVEMENT_TYPE_PURCHASE,
+        "refund": strings.MOVEMENT_TYPE_REFUND,
+        "adjustment": strings.MOVEMENT_TYPE_ADJUSTMENT,
+    }.get(key, key)
+
+
+# Movement type → Badge kind: sale red, purchase green, refund amber,
+# adjustment blue (accent).
+_MOVEMENT_KIND = {
+    "sale": "danger",
+    "purchase": "success",
+    "refund": "warning",
+    "adjustment": "accent",
+}
+
+
+class _MovementRow(QFrame):
+    """One ledger entry: date, type badge, signed delta, resulting stock."""
+
+    def __init__(self, mv: dict) -> None:
+        super().__init__()
+        self.setObjectName("RuleCard")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(
+            SPACING["md"], SPACING["sm"], SPACING["md"], SPACING["sm"]
+        )
+        outer.setSpacing(2)
+
+        top = QHBoxLayout()
+        top.setSpacing(SPACING["md"])
+        date = QLabel(fmt.fmt_short_datetime(mv.get("created_at")))
+        date.setObjectName("Muted")
+        top.addWidget(date)
+
+        mtype = mv.get("movement_type", "")
+        top.addWidget(
+            Badge(_movement_type_label(mtype), _MOVEMENT_KIND.get(mtype, "neutral"))
+        )
+
+        delta = int(mv.get("quantity_delta", 0) or 0)
+        top.addWidget(self._delta_widget(delta))
+        top.addStretch(1)
+
+        after = QLabel(
+            strings.MOVEMENT_STOCK_AFTER.format(qty=mv.get("quantity_after", ""))
+        )
+        after.setObjectName("Muted")
+        top.addWidget(after)
+        outer.addLayout(top)
+
+        note = mv.get("note")
+        if note:
+            note_label = QLabel(note)
+            note_label.setObjectName("Muted")
+            note_label.setWordWrap(True)
+            font = note_label.font()
+            font.setItalic(True)
+            note_label.setFont(font)
+            outer.addWidget(note_label)
+
+    @staticmethod
+    def _delta_widget(delta: int) -> QWidget:
+        holder = QWidget()
+        row = QHBoxLayout(holder)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(2)
+        up = delta >= 0
+        color = SEMANTIC["success"] if up else SEMANTIC["danger"]
+        icon = QLabel()
+        icon.setPixmap(
+            qta.icon("fa5s.arrow-up" if up else "fa5s.arrow-down", color=color).pixmap(
+                ICON_SIZES["sm"], ICON_SIZES["sm"]
+            )
+        )
+        icon.setStyleSheet("background: transparent;")
+        row.addWidget(icon)
+        if delta > 0:
+            text = f"+{delta}"
+        elif delta < 0:
+            text = f"−{abs(delta)}"  # U+2212 minus, matching the spec
+        else:
+            text = "0"
+        label = QLabel(text)
+        label.setStyleSheet(
+            f"color: {color}; font-weight: 700; background: transparent;"
+        )
+        row.addWidget(label)
+        return holder
+
+
 class ProductDetailDialog(ModalDialog):
-    """Read-only product sheet: image, prices, stock, per-period stats."""
+    """Read-only product sheet: Informations (stats) + Historique (ledger)."""
 
     def __init__(self, api, store_id: str, product: dict, parent=None) -> None:
         super().__init__(strings.PRODUCT_DETAIL_TITLE, parent)
         self.api = api
+        self.store_id = store_id
+        self.product = product
+        self._hist_limit = 20
+        self._hist_loaded = False
         self.setMinimumWidth(640)
+
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self._build_info_tab(product), strings.PRODUCT_TAB_INFO)
+        self.tabs.addTab(self._build_history_tab(), strings.PRODUCT_TAB_HISTORY)
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+        self.content.addWidget(self.tabs)
+
+        self.cancel_button.hide()
+        self.ok_button.setText(strings.CLOSE)
+
+        # Stats power the Informations tab (shown first) — load immediately.
+        run_api(
+            lambda: self.api.stats_product(store_id, product["id"]),
+            self._on_stats,
+            self._on_stats_error,
+        )
+
+    # ---------------------------------------------------- Informations tab
+
+    def _build_info_tab(self, product: dict) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SPACING["md"])
 
         header = QHBoxLayout()
         header.setSpacing(SPACING["lg"])
@@ -564,31 +689,104 @@ class ProductDetailDialog(ModalDialog):
         info.addLayout(chips)
         info.addStretch(1)
         header.addLayout(info, stretch=1)
-        self.content.addLayout(header)
+        layout.addLayout(header)
 
         stats_title = QLabel(strings.PRODUCT_DETAIL_STATS)
         stats_title.setObjectName("SectionTitle")
-        self.content.addWidget(stats_title)
+        layout.addWidget(stats_title)
 
         self.stats_grid = QGridLayout()
         self.stats_grid.setSpacing(SPACING["sm"])
-        self.content.addLayout(self.stats_grid)
+        layout.addLayout(self.stats_grid)
 
         self.chart = BarChart()
-        self.content.addWidget(self.chart, stretch=1)
+        layout.addWidget(self.chart, stretch=1)
 
         self.loading = QLabel(strings.LOADING + "…")
         self.loading.setObjectName("Muted")
-        self.content.addWidget(self.loading)
+        layout.addWidget(self.loading)
+        return page
 
-        self.cancel_button.hide()
-        self.ok_button.setText(strings.CLOSE)
+    # ------------------------------------------------------- Historique tab
 
-        run_api(
-            lambda: self.api.stats_product(store_id, product["id"]),
-            self._on_stats,
-            self._on_stats_error,
+    def _build_history_tab(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SPACING["sm"])
+
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(SPACING["sm"])
+        self._hist_holder = QWidget()
+        self._hist_box = QVBoxLayout(self._hist_holder)
+        self._hist_box.setContentsMargins(0, 0, 0, 0)
+        self._hist_box.setSpacing(SPACING["sm"])
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(self._hist_holder)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        content_layout.addWidget(scroll, stretch=1)
+        self._voir_plus = QPushButton(strings.MOVEMENT_LOAD_MORE)
+        self._voir_plus.setObjectName("Secondary")
+        self._voir_plus.clicked.connect(self._load_more)
+        self._voir_plus.hide()
+        content_layout.addWidget(
+            self._voir_plus, alignment=Qt.AlignmentFlag.AlignCenter
         )
+
+        self._hist_stack = StatefulStack(
+            content, EmptyState("fa5s.history", strings.MOVEMENT_EMPTY)
+        )
+        layout.addWidget(self._hist_stack, stretch=1)
+        return page
+
+    def _on_tab_changed(self, index: int) -> None:
+        if index == 1 and not self._hist_loaded:
+            self._load_history()
+
+    def _load_history(self) -> None:
+        self._hist_stack.show_loading()
+        run_api(
+            lambda: self.api.get_product_movements(
+                self.store_id, self.product["id"], limit=self._hist_limit
+            ),
+            self._on_movements,
+            self._on_movements_error,
+        )
+
+    def _load_more(self) -> None:
+        self._hist_limit *= 2
+        self._load_history()
+
+    def _on_movements(self, page: object) -> None:
+        if not shiboken6.isValid(self):
+            return
+        self._hist_loaded = True
+        items = page.get("items", []) if isinstance(page, dict) else []
+        total = page.get("total", len(items)) if isinstance(page, dict) else len(items)
+        while self._hist_box.count():
+            row = self._hist_box.takeAt(0)
+            if row.widget() is not None:
+                row.widget().deleteLater()
+        for mv in items:
+            self._hist_box.addWidget(_MovementRow(mv))
+        self._hist_box.addStretch(1)
+        # "Voir plus": more rows exist than we've loaded.
+        self._voir_plus.setVisible(len(items) < total)
+        if items:
+            self._hist_stack.show_content()
+        else:
+            self._hist_stack.show_empty()
+
+    def _on_movements_error(self, err) -> None:
+        if not shiboken6.isValid(self):
+            return
+        self._hist_loaded = True
+        self._hist_stack.show_empty()
+
+    # ---------------------------------------------------------- stats load
 
     def _on_stats(self, stats: object) -> None:
         self.loading.hide()

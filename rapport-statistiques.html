@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تقرير تحسين صفحة الإحصائيات - مشروع إدارة المخزون</title>
+    <style>
+        /* ===== CSS Variables ===== */
+        :root {
+            --primary: #2563EB;
+            --primary-light: #DBEAFE;
+            --primary-dark: #1E40AF;
+            --success: #16A34A;
+            --success-light: #DCFCE7;
+            --warning: #D97706;
+            --warning-light: #FEF3C7;
+            --danger: #DC2626;
+            --danger-light: #FEE2E2;
+            --violet: #7C3AED;
+            --violet-light: #EDE9FE;
+            --teal: #0D9488;
+            --gray-50: #F8FAFC;
+            --gray-100: #F1F5F9;
+            --gray-200: #E2E8F0;
+            --gray-300: #CBD5E1;
+            --gray-400: #94A3B8;
+            --gray-500: #64748B;
+            --gray-600: #475569;
+            --gray-700: #334155;
+            --gray-800: #1E293B;
+            --gray-900: #0F172A;
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 16px;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+            --shadow-lg: 0 8px 30px rgba(0,0,0,0.12);
+            --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        /* ===== Reset & Base ===== */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        html {
+            scroll-behavior: smooth;
+        }
+        body {
+            font-family: var(--font-sans);
+            background: var(--gray-100);
+            color: var(--gray-800);
+            line-height: 1.8;
+            font-size: 16px;
+        }
+
+        /* ===== Container ===== */
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* ===== Hero / Header ===== */
+        .hero {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 60px 0 50px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 30% 50%, rgba(255,255,255,0.08) 0%, transparent 50%);
+            pointer-events: none;
+        }
+        .hero-badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(4px);
+            padding: 6px 18px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .hero h1 {
+            font-size: 38px;
+            font-weight: 800;
+            margin-bottom: 12px;
+            line-height: 1.3;
+        }
+        .hero p {
+            font-size: 18px;
+            opacity: 0.9;
+            max-width: 650px;
+            margin: 0 auto;
+            line-height: 1.7;
+        }
+        .hero-meta {
+            margin-top: 24px;
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        .hero-meta span {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* ===== Navigation / TOC ===== */
+        .toc {
+            background: white;
+            border-bottom: 1px solid var(--gray-200);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--shadow-sm);
+        }
+        .toc-inner {
+            display: flex;
+            gap: 4px;
+            padding: 10px 0;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .toc-inner::-webkit-scrollbar { display: none; }
+        .toc-link {
+            flex-shrink: 0;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--gray-500);
+            text-decoration: none;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .toc-link:hover {
+            background: var(--gray-100);
+            color: var(--primary);
+        }
+
+        /* ===== Section ===== */
+        .section {
+            background: white;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-sm);
+            padding: 40px;
+            margin: 30px 0;
+            border: 1px solid var(--gray-200);
+        }
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid var(--gray-100);
+        }
+        .section-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            flex-shrink: 0;
+        }
+        .section h2 {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--gray-900);
+        }
+        .section h3 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--gray-800);
+            margin-top: 24px;
+            margin-bottom: 10px;
+        }
+        .section h4 {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--gray-700);
+            margin-top: 18px;
+            margin-bottom: 6px;
+        }
+        .section p {
+            margin-bottom: 12px;
+            color: var(--gray-600);
+        }
+
+        /* ===== Current State Analysis ===== */
+        .state-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        @media (max-width: 700px) {
+            .state-grid { grid-template-columns: 1fr; }
+        }
+        .state-card {
+            padding: 18px 20px;
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        .state-card.good {
+            background: var(--success-light);
+            border-right: 4px solid var(--success);
+        }
+        .state-card.bad {
+            background: var(--danger-light);
+            border-right: 4px solid var(--danger);
+        }
+        .state-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .state-text {
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .state-text strong {
+            display: block;
+            margin-bottom: 2px;
+            font-size: 15px;
+        }
+        .state-card.good .state-text strong { color: #15803D; }
+        .state-card.bad .state-text strong { color: #B91C1C; }
+
+        /* ===== Suggestion Cards ===== */
+        .suggestion {
+            background: var(--gray-50);
+            border-radius: var(--radius-md);
+            padding: 24px;
+            margin-bottom: 18px;
+            border: 1px solid var(--gray-200);
+            transition: all 0.2s;
+        }
+        .suggestion:hover {
+            border-color: var(--primary);
+            box-shadow: var(--shadow-md);
+        }
+        .suggestion-top {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+        }
+        .suggestion-number {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .suggestion-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--gray-900);
+            margin-bottom: 4px;
+        }
+        .suggestion-desc {
+            font-size: 14px;
+            color: var(--gray-600);
+            line-height: 1.7;
+            margin-top: 8px;
+            margin-right: 50px;
+        }
+        .suggestion-tags {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+            margin-right: 50px;
+        }
+        .tag {
+            padding: 3px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .tag.easy { background: var(--success-light); color: #15803D; }
+        .tag.medium { background: var(--warning-light); color: #92400E; }
+        .tag.hard { background: var(--danger-light); color: #991B1B; }
+        .tag.backend { background: var(--violet-light); color: #6D28D9; }
+        .tag.frontend { background: var(--primary-light); color: #1E40AF; }
+        .tag.urgent { background: #FEF2F2; color: #B91C1C; border: 1px solid #FCA5A5; }
+
+        /* ===== Priority Table ===== */
+        .priority-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            border: 1px solid var(--gray-200);
+        }
+        .priority-table th {
+            background: var(--gray-800);
+            color: white;
+            padding: 12px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            text-align: center;
+        }
+        .priority-table th:first-child { text-align: right; }
+        .priority-table td {
+            padding: 12px 16px;
+            font-size: 14px;
+            border-bottom: 1px solid var(--gray-100);
+            text-align: center;
+        }
+        .priority-table td:first-child { text-align: right; font-weight: 600; }
+        .priority-table tr:last-child td { border-bottom: none; }
+        .priority-table tr:hover td { background: var(--gray-50); }
+        .priority-table .col-priority { width: 70px; }
+        .priority-table .col-feature { text-align: right; }
+        .priority-table .col-effort { width: 100px; }
+
+        .priority-star {
+            color: var(--warning);
+            font-size: 18px;
+        }
+        .effort-badge {
+            display: inline-block;
+            padding: 2px 12px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .effort-badge.easy { background: var(--success-light); color: #15803D; }
+        .effort-badge.medium { background: var(--warning-light); color: #92400E; }
+        .effort-badge.hard { background: var(--danger-light); color: #991B1B; }
+
+        /* ===== Layout Mockup ===== */
+        .mockup {
+            background: var(--gray-900);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            color: white;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            overflow-x: auto;
+            margin: 16px 0 8px;
+            direction: ltr;
+        }
+        .mockup .box-line {
+            color: var(--gray-400);
+        }
+        .mockup .box-header {
+            color: var(--primary-light);
+        }
+        .mockup .box-kpi {
+            color: var(--success-light);
+        }
+        .mockup .box-chart {
+            color: var(--warning-light);
+        }
+        .mockup .box-table {
+            color: var(--violet-light);
+        }
+        .mockup .box-section {
+            color: var(--teal);
+        }
+        .mockup-comment {
+            color: var(--gray-500);
+            font-style: italic;
+        }
+
+        /* ===== Stats Cards in Report ===== */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            text-align: center;
+            box-shadow: var(--shadow-sm);
+        }
+        .stat-card .num {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--primary);
+        }
+        .stat-card .label {
+            font-size: 13px;
+            color: var(--gray-500);
+            margin-top: 4px;
+        }
+        .stat-card .sub {
+            font-size: 12px;
+            color: var(--gray-400);
+            margin-top: 2px;
+        }
+
+        /* ===== Callout ===== */
+        .callout {
+            padding: 18px 22px;
+            border-radius: var(--radius-md);
+            margin: 20px 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        .callout-icon { font-size: 24px; flex-shrink: 0; }
+        .callout-title { font-weight: 700; margin-bottom: 4px; font-size: 15px; }
+        .callout p { margin-bottom: 0; font-size: 14px; }
+        .callout.info { background: var(--primary-light); border-right: 4px solid var(--primary); }
+        .callout.info .callout-title { color: #1E40AF; }
+        .callout.info p { color: #1E3A5F; }
+        .callout.warning { background: var(--warning-light); border-right: 4px solid var(--warning); }
+        .callout.warning .callout-title { color: #92400E; }
+        .callout.warning p { color: #78350F; }
+        .callout.success { background: var(--success-light); border-right: 4px solid var(--success); }
+        .callout.success .callout-title { color: #15803D; }
+        .callout.success p { color: #14532D; }
+
+        /* ===== Footer ===== */
+        .footer {
+            text-align: center;
+            padding: 40px 0;
+            color: var(--gray-400);
+            font-size: 13px;
+        }
+
+        /* ===== Responsive ===== */
+        @media (max-width: 600px) {
+            .hero h1 { font-size: 26px; }
+            .hero p { font-size: 15px; }
+            .section { padding: 24px 18px; }
+            .suggestion-desc, .suggestion-tags { margin-right: 0; }
+            .suggestion-top { flex-direction: column; }
+            .stats-row { grid-template-columns: 1fr 1fr; }
+            .priority-table { font-size: 12px; }
+            .priority-table th, .priority-table td { padding: 8px 10px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+    <div class="container">
+        <div class="hero-badge">📊 تحليل وتطوير</div>
+        <h1>تقرير تحسين صفحة الإحصائيات</h1>
+        <p>تحليل شامل للوضع الحالي واقتراحات عملية لتطوير صفحة الإحصائيات لتكون غنية بالمعلومات التي يحتاجها التاجر</p>
+        <div class="hero-meta">
+            <span>📅 10 يوليو 2026</span>
+            <span>🏪 مشروع Gestion de Stock</span>
+            <span>⚡ 8 محاور تطوير</span>
+        </div>
+    </div>
+</header>
+
+<!-- ============ TOC ============ -->
+<nav class="toc">
+    <div class="container toc-inner">
+        <a href="#current" class="toc-link">🔍 الوضع الحالي</a>
+        <a href="#charts" class="toc-link">📈 الرسوم البيانية</a>
+        <a href="#kpi" class="toc-link">🎯 بطاقات KPI</a>
+        <a href="#inventory" class="toc-link">📦 المخزون</a>
+        <a href="#customers" class="toc-link">👥 العملاء</a>
+        <a href="#time" class="toc-link">⏰ التحليل الزمني</a>
+        <a href="#categories" class="toc-link">🏷️ الفئات</a>
+        <a href="#cashflow" class="toc-link">💰 التدفق المالي</a>
+        <a href="#layout" class="toc-link">🎨 التصميم</a>
+        <a href="#roadmap" class="toc-link">🏗️ خريطة الطريق</a>
+    </div>
+</nav>
+
+<div class="container">
+
+    <!-- ============ CURRENT STATE ============ -->
+    <section id="current" class="section">
+        <div class="section-header">
+            <div class="section-icon" style="background: var(--gray-200);">🔍</div>
+            <h2>تحليل الوضع الحالي</h2>
+        </div>
+        <p>صفحة الإحصائيات الحالية تحتوي علىelement أساسية لكنها تفتقر إلى العمق والرسوم البيانية والتحليلات المتقدمة التي يحتاجها التاجر لاتخاذ قرارات مستنيرة.</p>
+
+        <h3>الموجود حالياً</h3>
+        <div class="state-grid">
+            <div class="state-card good">
+                <div class="state-icon">✅</div>
+                <div class="state-text">
+                    <strong>4 بطاقات KPI</strong>
+                    الإيرادات، الربح الإجمالي، عدد المبيعات، الخصومات
+                </div>
+            </div>
+            <div class="state-card good">
+                <div class="state-icon">✅</div>
+                <div class="state-text">
+                    <strong>مقارنة الفترات</strong>
+                    اليوم / الأسبوع / الشهر / السنة مع مقارنة بالفترة السابقة
+                </div>
+            </div>
+            <div class="state-card good">
+                <div class="state-icon">✅</div>
+                <div class="state-text">
+                    <strong>أفضل المنتجات مبيعاً</strong>
+                    جدول مع صور مصغرة وكميات وإيرادات
+                </div>
+            </div>
+            <div class="state-card good">
+                <div class="state-icon">✅</div>
+                <div class="state-text">
+                    <strong>تحليل ارتباطات المنتجات</strong>
+                    Apriori - المنتجات التي تُشترى معاً
+                </div>
+            </div>
+            <div class="state-card good">
+                <div class="state-icon">✅</div>
+                <div class="state-text">
+                    <strong>توزيع طرق الدفع</strong>
+                    شريط نسبي مع legend
+                </div>
+            </div>
+            <div class="state-card good">
+                <div class="state-icon">✅</div>
+                <div class="state-text">
+                    <strong>تصدير PDF و Excel</strong>
+                    تقارير كاملة قابلة للتصدير
+                </div>
+            </div>
+            <div class="state-card bad">
+                <div class="state-icon">❌</div>
+                <div class="state-text">
+                    <strong>لا رسوم بيانية</strong>
+                    ملف <code>charts.py</code> يحتوي على LineChart و DonutChart لكنهما <strong>غير مدمجين</strong> في الصفحة!
+                </div>
+            </div>
+            <div class="state-card bad">
+                <div class="state-icon">❌</div>
+                <div class="state-text">
+                    <strong>لا إحصائيات مخزون</strong>
+                    لا توجد معلومات عن قيمة المخزون أو المنتجات منخفضة المخزون
+                </div>
+            </div>
+            <div class="state-card bad">
+                <div class="state-icon">❌</div>
+                <div class="state-text">
+                    <strong>لا تحليل للعملاء</strong>
+                    على الرغم من وجود Endpoint <code>/top-customers</code> جاهز
+                </div>
+            </div>
+            <div class="state-card bad">
+                <div class="state-icon">❌</div>
+                <div class="state-text">
+                    <strong>لا تحليل زمني</strong>
+                    لا يوجد رسم بياني لتطور الإيرادات عبر الأيام
+                </div>
+            </div>
+            <div class="state-card bad">
+                <div class="state-icon">❌</div>
+                <div class="state-text">
+                    <strong>لا تحليل فئات</strong>
+                    لا توجد إحصائيات حسب تصنيف المنتجات
+                </div>
+            </div>
+            <div class="state-card bad">
+                <div class="state-icon">❌</div>
+                <div class="state-text">
+                    <strong>لا تدفق نقدي</strong>
+                    لا تحليل للنقدية والديون والمصروفات
+                </div>
+            </div>
+        </div>
+
+        <div class="callout warning" style="margin-top: 20px;">
+            <div class="callout-icon">⚠️</div>
+            <div>
+                <div class="callout-title">ملاحظة مهمة</div>
+                <p>الباك إند (FastAPI) قوي جداً ويحتوي على Endpoints جاهزة مثل top-customers و customer-stats، لكن الواجهة الأمامية لا تستخدمها. هذا يعني أن نصف العمل منجز بالفعل!</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ CHARTS ============ -->
+    <section id="charts" class="section">
+        <div class="section-header">
+            <div class="section-icon" style="background: var(--primary-light);">📈</div>
+            <h2>١. إضافة الرسوم البيانية — الأولوية القصوى</h2>
+        </div>
+
+        <div class="callout success">
+            <div class="callout-icon">🎉</div>
+            <div>
+                <div class="callout-title">خبر سار: الكود جاهز!</div>
+                <p>ملف <code>frontend/ui/widgets/charts.py</code> يحتوي على <strong>LineChart</strong> (رسم بياني مزدوج للإيرادات والأرباح) و <strong>DonutChart</strong> (مخطط دائري لتوزيع طرق الدفع) — وكلاهما غير مستخدم حالياً في صفحة الإحصائيات.</p>
+            </div>
+        </div>
+
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="num">📈</div>
+                <div class="label">LineChart</div>
+                <div class="sub">إيرادات + أرباح</div>
+            </div>
+            <div class="stat-card">
+                <div class="num">🍩</div>
+                <div class="label">DonutChart</div>
+                <div class="sub">طرق الدفع</div>
+            </div>
+            <div class="stat-card">
+                <div class="num" style="color: var(--success);">✅</div>
+                <div class="label">جاهز للتكامل</div>
+                <div class="sub">0 ساعة تطوير إضافية</div>
+            </div>
+        </div>
+
+        <h3>مكان الإضافة في الصفحة</h3>
+        <p>يتم وضع <strong>LineChart</strong> بين صف الـ KPI وصف تطور الفترات، و <strong>DonutChart</strong> كبديل مرئي أفضل للـ PaymentShareBar الحالي في منتصف الصفحة.</p>
+
+        <div class="mockup">
+            ┌─────────────────────────────────────────────────────────┐<br>
+            │ <span class="box-header">[عنوان]  [فترة]  [تصدير]</span>                               │<br>
+            ├─────────────────────────────────────────────────────────┤<br>
+            │ <span class="box-kpi">💰 الإيرادات  │  💰 الربح  │  🛒 المبيعات  │  🏷️ الخصومات</span>  │<br>
+            ├─────────────────────────────────────────────────────────┤<br>
+            │ <span class="box-chart">📈  ←  ←  LineChart: تطور الإيرادات والأرباح (يومي)  →  →</span>  │  ← <span class="mockup-comment">جديد</span><br>
+            ├─────────────────────────────────────────────────────────┤<br>
+            │ <span class="box-header">📅 تطور الفترات: اليوم | الأسبوع | الشهر | السنة</span>         │<br>
+            ├────────────────────────────────┬────────────────────────┤<br>
+            │ <span class="box-table">🏆 أفضل المنتجات</span>       │ <span class="box-chart">🍩 DonutChart</span>  │  ← <span class="mockup-comment">جديد</span><br>
+            │ <span class="box-table">جدول مع صور</span>           │ <span class="box-chart">طرق الدفع</span>    │<br>
+            ├────────────────────────────────┴────────────────────────┤<br>
+            │ <span class="box-section">🔗 المنتجات المشتراة معاً</span>                          │<br>
+            └─────────────────────────────────────────────────────────┘
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">←</div>
+                <div>
+                    <div class="suggestion-title">إضافة Endpoint: تطور يومي (Daily Evolution)</div>
+                    <div class="suggestion-desc">
+                        الـ LineChart جاهز لكنه يحتاج بيانات يومية. حالياً الـ Backend لا يعيد بيانات يومية (يعيد فقط summary). 
+                        نحتاج إضافة Endpoint جديد <code>/statistics/daily-evolution</code> يعيد قائمة من النقاط (تاريخ، إيرادات، أرباح) 
+                        ليتم تمريرها إلى LineChart. هذا هو المكون الوحيد المفقود لتشغيل الرسم البياني بالكامل.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag medium">جهد: متوسط</span>
+                        <span class="tag backend">Backend</span>
+                        <span class="tag frontend">Frontend</span>
+                        <span class="tag urgent">مهم</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ KPI ============ -->
+    <section id="kpi" class="section">
+        <div class="section-header">
+            <div class="section-icon" style="background: var(--success-light);">🎯</div>
+            <h2>٢. بطاقات KPI جديدة — ما ينقص التاجر</h2>
+        </div>
+        <p>بطاقات الأداء الحالية (٤ بطاقات) جيدة لكنها لا تغطي كل ما يحتاجه التاجر. إضافة هذه البطاقات ستعطي نظرة أشمل:</p>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">١</div>
+                <div>
+                    <div class="suggestion-title">👥 عدد العملاء الجدد (New Customers)</div>
+                    <div class="suggestion-desc">
+                        كم عميلاً جديداً اشترى من المتجر في الفترة المحددة؟ هذا المؤشر مهم لقياس نمو قاعدة العملاء.
+                        الـ Endpoint موجود بالفعل (<code>/statistics/top-customers</code>) لكنه لا يعيد عدد العملاء الجدد — 
+                        نحتاج إضافة حقل <code>new_customers_count</code> إلى StatsSummary.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag easy">جهد: سهل</span>
+                        <span class="tag backend">Backend</span>
+                        <span class="tag frontend">Frontend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">٢</div>
+                <div>
+                    <div class="suggestion-title">🛒 متوسط قيمة الطلب (Average Order Value)</div>
+                    <div class="suggestion-desc">
+                        AOV = إجمالي الإيرادات ÷ عدد المبيعات. هذا المؤشر أهم من عدد المبيعات وحده لأنه يقيس 
+                        جودة المبيعات. موجود حالياً كـ "sub" في بطاقة الإيرادات لكن يستحق بطاقة مستقلة.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag easy">جهد: سهل</span>
+                        <span class="tag frontend">Frontend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">٣</div>
+                <div>
+                    <div class="suggestion-title">📦 عدد العناصر لكل فاتورة (Items per Transaction)</div>
+                    <div class="suggestion-desc">
+                        كم منتجاً يشتري الزبون في كل فاتورة؟ هذا الرقم يساعد في فهم سلوك الشراء. 
+                        إذا كان منخفضاً، يمكن للعروض الترويجية (اشتر 2 واحصل على 1) أن ترفعه.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag medium">جهد: متوسط</span>
+                        <span class="tag backend">Backend</span>
+                        <span class="tag frontend">Frontend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">٤</div>
+                <div>
+                    <div class="suggestion-title">📊 قيمة المخزون الإجمالية (Total Stock Value)</div>
+                    <div class="suggestion-desc">
+                        القيمة الإجمالية للمخزون بسعر التكلفة (cost × quantity). هذا مؤشر حاسم للتاجر 
+                        ليعرف كم رأس مال مربوط في البضاعة دون بيع. 
+                        الحساب: <code>SUM(product.cost_price × product.stock_quantity)</code>.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag medium">جهد: متوسط</span>
+                        <span class="tag backend">Backend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">٥</div>
+                <div>
+                    <div class="suggestion-title">📈 مقارنة مع الفترة السابقة لكل KPI</div>
+                    <div class="suggestion-desc">
+                        حالياً، مقارنة الفترات (↑/↓) موجودة فقط في صف Period Evolution أسفل الـ KPIs. 
+                        الأفضل إضافة DeltaChip صغير لكل بطاقة KPI يظهر النسبة المئوية للتغير مقارنة بالفترة نفسها من 
+                        الشهر/الأسبوع السابق — مثلما يفعل Google Analytics.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag medium">جهد: متوسط</span>
+                        <span class="tag frontend">Frontend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ INVENTORY ============ -->
+    <section id="inventory" class="section">
+        <div class="section-header">
+            <div class="section-icon" style="background: var(--warning-light);">📦</div>
+            <h2>٣. تحليل المخزون — مهم جداً للتاجر</h2>
+        </div>
+        <p>حالياً لا توجد أي إحصائيات عن المخزون في صفحة الإحصائيات. هذا من أكبر النواقص لأن المخزون هو قلب أي متجر.</p>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">١</div>
+                <div>
+                    <div class="suggestion-title">📉 المنتجات الأقل مبيعاً (Dead Stock / Low Movers)</div>
+                    <div class="suggestion-desc">
+                        منتجات مخزنة لفترة طويلة دون بيع — تحتاج تخفيضات أو تصفية. يمكن حسابها من خلال 
+                        مقارنة تاريخ آخر بيع بكمية المخزون الحالية. نسبة المنتجات التي لم تبع منذ 30/60/90 يوماً.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag hard">جهد: صعب</span>
+                        <span class="tag backend">Backend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">٢</div>
+                <div>
+                    <div class="suggestion-title">💰 المنتجات الأكثر ربحية (وليس الأكثر مبيعاً)</div>
+                    <div class="suggestion-desc">
+                        منتج قد لا يباع بكثرة لكن هامش ربحه كبير. الترتيب حسب إجمالي الربح = 
+                        <code>SUM((سعر البيع - سعر التكلفة) × الكمية)</code>. الـ Backend لديه البيانات لكن الـ Frontend 
+                        لا يعرضها بهذا الشكل.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag easy">جهد: سهل</span>
+                        <span class="tag backend">Backend</span>
+                        <span class="tag frontend">Frontend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">٣</div>
+                <div>
+                    <div class="suggestion-title">🔴 تنبيهات المخزون المنخفض (Low Stock Alerts)</div>
+                    <div class="suggestion-desc">
+                        المنتجات التي وصلت أو انخفضت عن حد الطلب الآمن. موجودة حالياً في صفحة التنبيهات 
+                        المنفصلة لكنها ستكون مفيدة جداً في لوحة الإحصائيات. يمكن إضافة بطاقة صغيرة تعرض 
+                        عدد المنتجات في المخزون المنخفض مع روابط سريعة.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag easy">جهد: سهل</span>
+                        <span class="tag backend">Backend</span>
+                        <span class="tag frontend">Frontend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">٤</div>
+                <div>
+                    <div class="suggestion-title">🔄 معدل دوران المخزون (Inventory Turnover Ratio)</div>
+                    <div class="suggestion-desc">
+                        عدد المرات التي تم بيع واستبدال المخزون خلال فترة معينة. 
+                        <code>Turnover = تكلفة البضاعة المباعة ÷ متوسط قيمة المخزون</code>. 
+                        هذا المؤشر يقيس كفاءة إدارة المخزون — كلما زاد الرقم، كلما كان أفضل.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag medium">جهد: متوسط</span>
+                        <span class="tag backend">Backend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ CUSTOMERS ============ -->
+    <section id="customers" class="section">
+        <div class="section-header">
+            <div class="section-icon" style="background: var(--violet-light);">👥</div>
+            <h2>٤. تحليل العملاء — Endpoint جاهز لكن غير مستخدم!</h2>
+        </div>
+
+        <div class="callout warning">
+            <div class="callout-icon">🤯</div>
+            <div>
+                <div class="callout-title">مفاجأة: الكود جاهز بالكامل!</div>
+                <p>الـ Backend يحتوي على <code>/statistics/top-customers</code> و <code>/statistics/customers/{id}</code> اللذان يعيدان أفضل العملاء والإحصائيات الكاملة لكل عميل (الإيرادات، الربح، عدد المبيعات، الرصيد المتبقي، آخر شراء). لكن الواجهة الأمامية لا تستخدمهما أبداً!</p>
+            </div>
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">١</div>
+                <div>
+                    <div class="suggestion-title">👑 أفضل 10 عملاء (من حيث الإيرادات)</div>
+                    <div class="suggestion-desc">
+                        إضافة جدول صغير في صفحة الإحصائيات يعرض أفضل العملاء (الاسم، رقم الهاتف، الإيرادات، عدد المشتريات). 
+                        يمكن الضغط على عميل لفتح صفحة تفاصيل العميل الكاملة. هذا يستخدم <code>api_client.stats_top_customers()</code> الموجود.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag easy">جهد: سهل جداً</span>
+                        <span class="tag frontend">Frontend</span>
+                        <span class="tag urgent">مهم</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">٢</div>
+                <div>
+                    <div class="suggestion-title">📊 العملاء الجدد مقابل العائدين</div>
+                    <div class="suggestion-desc">
+                        تحليل يبين نسبة العملاء الجدد (أول شراء) مقابل العملاء العائدين (لديهم شراء سابق). 
+                        هذا يقيس ولاء العملاء وفعالية استراتيجيات التسويق. نحتاج إضافة هذا التحليل في الـ Backend.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag medium">جهد: متوسط</span>
+                        <span class="tag backend">Backend</span>
+                        <span class="tag frontend">Frontend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">٣</div>
+                <div>
+                    <div class="suggestion-title">🔄 العملاء الأكثر تكراراً للشراء</div>
+                    <div class="suggestion-desc">
+                        ترتيب العملاء حسب عدد مرات الشراء (وليس الإيرادات). يختلف عن top-customers — 
+                        العميل الذي يشتري مرة واحدة بقيمة كبيرة قد يكون في top-customers لكن العميل المخلص 
+                        الذي يشتري 20 مرة بقيمة متوسطة هو الأكثر قيمة على المدى الطويل.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag medium">جهد: متوسط</span>
+                        <span class="tag backend">Backend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ TIME ANALYSIS ============ -->
+    <section id="time" class="section">
+        <div class="section-header">
+            <div class="section-icon" style="background: #F0F9FF;">⏰</div>
+            <h2>٥. تحليل زمني متقدم</h2>
+        </div>
+        <p>فهم أنماط المبيعات الزمنية يساعد التاجر في تحسين التوظيف وجدولة العروض الترويجية:</p>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">١</div>
+                <div>
+                    <div class="suggestion-title">⏰ خريطة حرارية لساعات الذروة (Hourly Heatmap)</div>
+                    <div class="suggestion-desc">
+                        رسم بياني يوضح أكثر الساعات ازدحاماً بالمبيعات خلال اليوم. يساعد في تحديد أوقات الذروة 
+                        لتحسين جدولة الموظفين. على سبيل المثال: "الذروة بين 10:00-12:00 صباحاً و 16:00-18:00 مساءً".
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag hard">جهد: صعب</span>
+                        <span class="tag backend">Backend</span>
+                        <span class="tag frontend">Frontend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">٢</div>
+                <div>
+                    <div class="suggestion-title">📅 أيام الأسبوع — أكثر الأيام ازدحاماً</div>
+                    <div class="suggestion-desc">
+                        تحليل يبين توزيع المبيعات على أيام الأسبوع. هل السبت هو الأكثر مبيعاً؟ 
+                        أم أن هناك أياماً محددة تكون فيها المبيعات ضعيفة؟ يمكن عرضه كمخطط شريطي بسيط.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag medium">جهد: متوسط</span>
+                        <span class="tag backend">Backend</span>
+                        <span class="tag frontend">Frontend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">٣</div>
+                <div>
+                    <div class="suggestion-title">📆 مقارنة مع الفترة نفسها من العام الماضي</div>
+                    <div class="suggestion-desc">
+                        أهم مؤشر للنمو: هل الإيرادات أعلى أم أقل من العام الماضي في نفس الفترة؟ 
+                        هذا يحتاج تغيير بسيط في الـ Backend لحساب نفس النطاق التاريخي للسنة السابقة.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag medium">جهد: متوسط</span>
+                        <span class="tag backend">Backend</span>
+                        <span class="tag frontend">Frontend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ CATEGORIES ============ -->
+    <section id="categories" class="section">
+        <div class="section-header">
+            <div class="section-icon" style="background: #FFF7ED;">🏷️</div>
+            <h2>٦. تحليل الفئات والتصنيفات</h2>
+        </div>
+        <p>إذا كان النظام يدعم فئات المنتجات (Categories)، فهذه التحليلات ضرورية:</p>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">١</div>
+                <div>
+                    <div class="suggestion-title">🏷️ المبيعات حسب الفئة</div>
+                    <div class="suggestion-desc">
+                        أي فئة تحقق أعلى إيرادات؟ مخطط دائري (DonutChart) يظهر توزيع الإيرادات 
+                        على الفئات — مثلاً: المواد الغذائية ٤٠٪، المشروبات ٣٠٪، المنظفات ٢٠٪، أخرى ١٠٪.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag medium">جهد: متوسط</span>
+                        <span class="tag backend">Backend</span>
+                        <span class="tag frontend">Frontend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">٢</div>
+                <div>
+                    <div class="suggestion-title">💰 هامش الربح حسب الفئة</div>
+                    <div class="suggestion-desc">
+                        فئة قد تحقق إيرادات عالية لكن هامش ربحها منخفض، وأخرى العكس. 
+                        مثلاً: "المشروبات: هامش ٤٠٪ ← الأكثر ربحية".
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag medium">جهد: متوسط</span>
+                        <span class="tag backend">Backend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">٣</div>
+                <div>
+                    <div class="suggestion-title">📊 مقارنة أداء الفئات عبر الفترات</div>
+                    <div class="suggestion-desc">
+                        هل كانت فئة "الملابس" أفضل في الصيف الماضي مقارنة بهذا الصيف؟ 
+                        يمكن عرض تطور كل فئة خلال الأشهر الـ ١٢ الماضية.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag hard">جهد: صعب</span>
+                        <span class="tag backend">Backend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ CASHFLOW ============ -->
+    <section id="cashflow" class="section">
+        <div class="section-header">
+            <div class="section-icon" style="background: #F0FDF4;">💰</div>
+            <h2>٧. تحليل النقد والتدفق المالي</h2>
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">١</div>
+                <div>
+                    <div class="suggestion-title">💵 رصيد الصندوق اليومي</div>
+                    <div class="suggestion-desc">
+                        إجمالي النقدية في الصندوق في نهاية اليوم = المبيعات النقدية - المصروفات النقدية - السحوبات. 
+                        هذا المؤشر موجود جزئياً في توزيع طرق الدفع.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag easy">جهد: سهل</span>
+                        <span class="tag backend">Backend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">٢</div>
+                <div>
+                    <div class="suggestion-title">📋 الديون المستحقة للعملاء (Outstanding Credits)</div>
+                    <div class="suggestion-desc">
+                        المبالغ التي لم يدفعها العملاء بعد (البيع بالآجل). هذه المعلومة متوفرة في صفحة العملاء 
+                        لكنها مفيدة جداً في لوحة الإحصائيات مع إجمالي المبلغ وعدد العملاء المدينة.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag medium">جهد: متوسط</span>
+                        <span class="tag backend">Backend</span>
+                        <span class="tag frontend">Frontend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="suggestion">
+            <div class="suggestion-top">
+                <div class="suggestion-number">٣</div>
+                <div>
+                    <div class="suggestion-title">📊 صافي الربح بعد المصروفات</div>
+                    <div class="suggestion-desc">
+                        إذا أضفنا نظاماً للمصروفات (الإيجار، الرواتب، الكهرباء...)، يمكن حساب صافي الربح الحقيقي 
+                        = إجمالي الربح - إجمالي المصروفات. هذا سيتطلب نموذجاً جديداً للمصروفات في الـ Backend.
+                    </div>
+                    <div class="suggestion-tags">
+                        <span class="tag hard">جهد: صعب</span>
+                        <span class="tag backend">Backend</span>
+                        <span class="tag frontend">Frontend</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ LAYOUT ============ -->
+    <section id="layout" class="section">
+        <div class="section-header">
+            <div class="section-icon" style="background: #F5F3FF;">🎨</div>
+            <h2>٨. إعادة تنظيم التصميم — الشكل المقترح</h2>
+        </div>
+
+        <p>اقتراح إعادة تنظيم صفحة الإحصائيات لتصبح لوحة تحكم (Dashboard) غنية بالمعلومات:</p>
+
+        <div class="mockup">
+┌──────────────────────────────────────────────────────────────────────────┐
+│  <span class="box-header">📊 الإحصائيات  ─  [اليوم | 7 أيام | 30 يوماً | هذا الشهر | هذا العام]  ─  [📅 من/إلى]</span>  │
+│  <span class="box-header">[📄 PDF]  [📊 Excel]  [🔄 تحديث]</span>                                    │
+├──────────────────────────────────────────────────────────────────────────┤
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
+│  │ 💰       │  │ 📈       │  │ 🛒       │  │ 👥       │  │ 📦       │  │
+│  │ ١٢٥,٠٠٠ دج│  │ ٣٢,٠٠٠ دج│  │ ٤٥٨      │  │ ٣٨      │  │ ٨٩٠,٠٠٠ دج│  │
+│  │ الإيرادات │  │ الربح    │  │ المبيعات │  │ عملاء جدد│  │ قيمة المخزون│ │
+│  │ سلة ٢٧٣  │  │ هامش ٢٦٪│  │ ٥/فاتورة │  │ ⬆️ +١٢٪│  │ ⚠️ ١٢ ناقص│  │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘  │
+├──────────────────────────────────────────────────────────────────────────┤
+│  📈 <span class="box-chart">تطور الإيرادات والأرباح — ٣٠ يوماً الأخيرة (LineChart)</span>                   │
+│                                                                          │
+├──────────────────────────────────┬───────────────────────────────────────┤
+│  📅 <span class="box-header">تطور الفترات</span>                    │  🏆 <span class="box-table">أفضل المنتجات</span>              │
+│  ┌──────┐┌──────┐┌──────┐┌──────┐│  ┌──────────────────────────┐       │
+│  │ اليوم ││ الأسبوع││ الشهر││ السنة ││  │ # │ صورة │ الاسم   │ الكمية│ │       │
+│  │ ٥٠٠٠  ││ ٣٥٠٠٠││ ١٢٠٠٠││     ││  │ ١ │ 🖼️  │ حليب  │ ١٢٠   │ │       │
+│  │ ⬆️٪  ││ ⬇️٪ ││ ⬆️٪ ││ ⬆️٪││  │ ٢ │ 🖼️  │ خبز   │ ٩٨    │ │       │
+│  └──────┘└──────┘└──────┘└──────┘│  └──────────────────────────┘       │
+├──────────────────────────────────┴───────────────────────────────────────┤
+│  💳 <span class="box-chart">طرق الدفع (DonutChart)</span>        │  👑 <span class="box-table">أفضل العملاء</span>               │
+│  🍩 نقداً ٥٥٪ | بطاقة ٣٠٪ | محفظة ١٥٪│  ┌──────────────────────────┘       │
+├──────────────────────────────────┬───────────────────────────────────────┤
+│  👥 <span class="box-section">جدد vs عائدين</span> ٦٠٪ عائدين       │  🏷️ <span class="box-section">المبيعات حسب الفئة</span>            │
+├──────────────────────────────────┴───────────────────────────────────────┤
+│  🔗 <span class="box-section">المنتجات المشتراة معاً (Associations)</span>                    │
+│  العملاء الذين يشترون حليب + خبز يأخذون أيضاً زبدة (ثقة ٨٥٪)             │
+└──────────────────────────────────────────────────────────────────────────┘
+        </div>
+
+        <h3>تحسينات UI/UX إضافية</h3>
+        <div style="display: grid; gap: 12px; margin-top: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--gray-50); border-radius: var(--radius-sm);">
+                <span style="font-size: 20px;">🎨</span>
+                <span style="font-size: 14px; color: var(--gray-700);"><strong>ألوان وحالات:</strong> إظهار اللون الأخضر للربح الإيجابي والأحمر للخسارة مباشرة في البطاقات (موجود جزئياً)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--gray-50); border-radius: var(--radius-sm);">
+                <span style="font-size: 20px;">📱</span>
+                <span style="font-size: 14px; color: var(--gray-700);"><strong>تصميم متجاوب:</strong> إعادة ترتيب البطاقات والمخططات تتناسب مع أحجام الشاشة المختلفة</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--gray-50); border-radius: var(--radius-sm);">
+                <span style="font-size: 20px;">🔽</span>
+                <span style="font-size: 14px; color: var(--gray-700);"><strong>أقسام قابلة للطي:</strong> Collapsible sections لتقليل التشتت البصري والتركيز على ما يهم</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--gray-50); border-radius: var(--radius-sm);">
+                <span style="font-size: 20px;">📋</span>
+                <span style="font-size: 14px; color: var(--gray-700);"><strong>ملخص سريع:</strong> شريط صغير أعلى الصفحة يحتوي على ملخص بصيغة "الإيرادات هذا الشهر +٢٥٪ مقارنة بالشهر الماضي"</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--gray-50); border-radius: var(--radius-sm);">
+                <span style="font-size: 20px;">🔄</span>
+                <span style="font-size: 14px; color: var(--gray-700);"><strong>تحديث تلقائي:</strong> تحديث البيانات كل ٣٠ ثانية أو يدوي مع شاشة تحميل جميلة</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ ROADMAP ============ -->
+    <section id="roadmap" class="section">
+        <div class="section-header">
+            <div class="section-icon" style="background: var(--gray-200);">🏗️</div>
+            <h2>خريطة طريق التنفيذ — حسب الأولوية والجهد</h2>
+        </div>
+
+        <table class="priority-table">
+            <thead>
+                <tr>
+                    <th>الأولوية</th>
+                    <th class="col-feature">الميزة</th>
+                    <th class="col-effort">الجهد</th>
+                    <th>حالة Backend</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="priority-star">⭐</span></td>
+                    <td style="text-align: right;">دمج LineChart و DonutChart في الصفحة</td>
+                    <td><span class="effort-badge easy">✅ سهل</span></td>
+                    <td>🟡 يحتاج Daily Evolution endpoint</td>
+                </tr>
+                <tr>
+                    <td><span class="priority-star">⭐</span></td>
+                    <td style="text-align: right;">إضافة أفضل العملاء (Top Customers)</td>
+                    <td><span class="effort-badge easy">✅ سهل جداً</span></td>
+                    <td>🟢 جاهز بالكامل</td>
+                </tr>
+                <tr>
+                    <td><span class="priority-star">⭐</span></td>
+                    <td style="text-align: right;">بطاقات KPI جديدة (عملاء جدد، قيمة المخزون، AOV)</td>
+                    <td><span class="effort-badge easy">✅ سهل</span></td>
+                    <td>🟡 يحتاج New Customers Count</td>
+                </tr>
+                <tr>
+                    <td>🔥 ٤</td>
+                    <td style="text-align: right;">تحليل المخزون (أقل مبيعاً، قيمة المخزون، turnover)</td>
+                    <td><span class="effort-badge medium">🟡 متوسط</span></td>
+                    <td>🔴 يحتاج Endpoints جديدة</td>
+                </tr>
+                <tr>
+                    <td>🔥 ٥</td>
+                    <td style="text-align: right;">تحليل الفئات (إذا كانت الفئات مفعلة)</td>
+                    <td><span class="effort-badge medium">🟡 متوسط</span></td>
+                    <td>🔴 يحتاج Endpoints جديدة</td>
+                </tr>
+                <tr>
+                    <td>🔥 ٦</td>
+                    <td style="text-align: right;">مقارنة سنوية مع العام الماضي</td>
+                    <td><span class="effort-badge medium">🟡 متوسط</span></td>
+                    <td>🟡 تعديل بسيط</td>
+                </tr>
+                <tr>
+                    <td>🔥 ٧</td>
+                    <td style="text-align: right;">أيام الأسبوع — توزيع المبيعات</td>
+                    <td><span class="effort-badge medium">🟡 متوسط</span></td>
+                    <td>🔴 يحتاج Endpoint جديد</td>
+                </tr>
+                <tr>
+                    <td>🔥 ٨</td>
+                    <td style="text-align: right;">أوقات الذروة (Hourly Heatmap)</td>
+                    <td><span class="effort-badge hard">🔴 صعب</span></td>
+                    <td>🔴 يحتاج Endpoint جديد</td>
+                </tr>
+                <tr>
+                    <td>🔥 ٩</td>
+                    <td style="text-align: right;">الديون المستحقة للعملاء</td>
+                    <td><span class="effort-badge medium">🟡 متوسط</span></td>
+                    <td>🟡 موجود جزئياً في Customer Stats</td>
+                </tr>
+                <tr>
+                    <td>🔥 ١٠</td>
+                    <td style="text-align: right;">إعادة تنظيم التصميم العام + أقسام قابلة للطي</td>
+                    <td><span class="effort-badge medium">🟡 متوسط</span></td>
+                    <td>🟢 لا يحتاج Backend</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="callout success" style="margin-top: 20px;">
+            <div class="callout-icon">💡</div>
+            <div>
+                <div class="callout-title">الخلاصة</div>
+                <p>
+                    يمكن البدء فوراً بالميزات التي لا تحتاج تغييرات في الـ Backend: 
+                    <strong>دمج الرسوم البيانية الجاهزة + عرض أفضل العملاء + إضافة بطاقات KPI جديدة</strong>. 
+                    هذه الميزات الثلاث يمكن إنجازها في أقل من يوم عمل واحد وستحدث فرقاً كبيراً في قيمة الصفحة.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ FOOTER ============ -->
+    <footer class="footer">
+        <p>تم إعداد هذا التقرير لتحسين صفحة الإحصائيات في مشروع Gestion de Stock POS</p>
+        <p>© 2026 — جميع التحليلات والاقتراحات مبنية على فحص الكود المصدري للمشروع</p>
+    </footer>
+
+</div>
+
+</body>
+</html>

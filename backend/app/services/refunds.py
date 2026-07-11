@@ -20,6 +20,7 @@ from app.core.exceptions import (
 )
 from app.models.refund import Refund, RefundItem
 from app.models.sale import Sale, SaleItem
+from app.models.stock_movement import MovementType
 from app.services.inventory import increment_stock
 
 
@@ -119,7 +120,13 @@ def create_refund(
     for ri in refund_items:
         sale_item = sale_items_map[ri.sale_item_id]
         base_units = ri.quantity * ri.unit_count
-        increment_stock(db, sale_item.product_id, base_units)
+        increment_stock(
+            db,
+            sale_item.product_id,
+            base_units,
+            ref_id=refund.id,
+            movement_type=MovementType.refund,
+        )
 
     db.commit()
     db.refresh(refund)

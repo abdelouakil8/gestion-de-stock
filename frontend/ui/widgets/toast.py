@@ -18,7 +18,11 @@ from ui.styles.tokens import ICON_SIZES, SPACING
 _SLIDE_MS = 150
 _SLIDE_OFFSET = 12  # px above the resting spot; slides down into place
 
-_ICONS = {"success": "fa5s.check-circle", "error": "fa5s.exclamation-circle"}
+_ICONS = {
+    "success": "fa5s.check-circle",
+    "error": "fa5s.exclamation-circle",
+    "warning": "fa5s.exclamation-triangle",
+}
 
 
 class _Toast(QWidget):

@@ -8,6 +8,7 @@ below it is Phase 1 dumb persistence, kept for seeding/tests; production
 checkout must always go through finalize_sale().
 """
 
+import uuid as _uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -77,6 +78,7 @@ def finalize_sale(db: Session, data: CheckoutRequest) -> Sale:
     regardless of what any UI claimed to have already checked.
     """
     try:
+        sale_id = _uuid.uuid4()
         sale_items: list[SaleItem] = []
         total = Decimal("0.00")
 
@@ -138,7 +140,7 @@ def finalize_sale(db: Session, data: CheckoutRequest) -> Sale:
             # Stock is measured in BASE units: a line of `quantity` packages of
             # `unit_count` each takes quantity * unit_count off the shelf.
             base_units = line.quantity * unit_count
-            inventory.decrement_stock(db, product, base_units)
+            inventory.decrement_stock(db, product, base_units, sale_id=sale_id)
 
             # Discount: validate that it doesn't push effective price below floor.
             discount = line.discount_amount or Decimal("0.00")
@@ -170,6 +172,7 @@ def finalize_sale(db: Session, data: CheckoutRequest) -> Sale:
 
         invoice_num = invoicing.allocate_invoice_number(db, data.store_id)
         sale = Sale(
+            id=sale_id,
             store_id=data.store_id,
             total_amount=total,
             paid_amount=paid_amount,

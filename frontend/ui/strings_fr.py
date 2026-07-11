@@ -323,6 +323,17 @@ PRODUCT_SAVED_TOAST = "Produit « {name} » enregistré."
 # --- Fiche produit (détail + statistiques)
 PRODUCT_DETAIL_TITLE = "Fiche produit"
 PRODUCT_DETAIL_STATS = "Ventes du produit"
+PRODUCT_DETAIL_HISTORY = "Historique des mouvements"
+MOVEMENT_COL_DATE = "Date"
+MOVEMENT_COL_TYPE = "Type"
+MOVEMENT_COL_DELTA = "Qté"
+MOVEMENT_COL_AFTER = "Après"
+MOVEMENT_COL_REF = "Référence"
+MOVEMENT_TYPE_SALE = "Vente"
+MOVEMENT_TYPE_PURCHASE = "Achat"
+MOVEMENT_TYPE_REFUND = "Remboursement"
+MOVEMENT_TYPE_ADJUSTMENT = "Ajustement"
+MOVEMENT_EMPTY = "Aucun mouvement enregistré pour ce produit."
 PRODUCT_STAT_UNITS = "Unités vendues"
 PRODUCT_STAT_REVENUE = "Chiffre d'affaires"
 PRODUCT_STAT_PROFIT = "Bénéfice"
@@ -386,6 +397,56 @@ STATS_ASSOCIATIONS_EMPTY_HINT = (
 )
 STATS_PIN_REQUIRED = "Les statistiques nécessitent le code PIN propriétaire."
 
+# --- Statistiques : tableau de bord
+STATS_TREND_TITLE = "Évolution du chiffre d'affaires et du bénéfice"
+STATS_CHART_EMPTY = "Aucune donnée à afficher sur cette période"
+STATS_REVENUE_LEGEND = "Chiffre d'affaires"
+STATS_PROFIT_LEGEND = "Bénéfice"
+STATS_DONUT_TOTAL = "Total"
+STATS_ITEMS_PER_SALE = "{value} articles / vente"
+# Instantané financier & stock
+STATS_STOCK_VALUE = "Valeur du stock"
+STATS_STOCK_VALUE_RETAIL = "Valeur de vente : {value}"
+STATS_CUSTOMER_CREDIT = "Crédits clients"
+STATS_CREDIT_SALES = "{count} ventes impayées"
+STATS_SUPPLIER_DEBT = "Dette fournisseurs"
+STATS_SUPPLIER_ORDERS = "{count} commandes ouvertes"
+STATS_OUT_OF_STOCK = "Produits en rupture"
+STATS_LOW_STOCK_HINT = "+ {count} sous le seuil d'alerte"
+# Meilleures ventes
+STATS_SORT_QTY = "Quantité"
+STATS_SORT_PROFIT = "Bénéfice"
+STATS_COL_MARGIN = "Marge"
+# Catégories
+STATS_CATEGORY_TITLE = "Ventes par catégorie"
+STATS_CATEGORY_MARGIN_TITLE = "Rentabilité par catégorie"
+STATS_NO_CATEGORY = "Sans catégorie"
+STATS_OTHERS = "Autres"
+# Affluence (heures / jours)
+STATS_BUSY_TITLE = "Affluence"
+STATS_BUSY_HOURS = "Heures"
+STATS_BUSY_DAYS = "Jours"
+STATS_HOUR_LABEL = "{hour}h"
+WEEKDAY_SHORT = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+# Meilleurs clients
+STATS_TOP_CUSTOMERS = "Meilleurs clients"
+STATS_COL_CUSTOMER = "Client"
+STATS_COL_PHONE = "Téléphone"
+STATS_COL_PURCHASES = "Achats"
+STATS_CUSTOMERS_EMPTY = "Aucun client sur cette période"
+STATS_CUSTOMERS_SUB = "{active} actifs · {new} nouveaux"
+# Stock dormant
+STATS_DEAD_STOCK_TITLE = "Stock dormant"
+STATS_DEAD_STOCK_EMPTY = "Aucun stock dormant sur cette durée"
+STATS_COL_STOCK = "Stock"
+STATS_COL_TIED = "Capital figé"
+STATS_COL_LAST_SALE = "Dernière vente"
+STATS_DAYS_AGO = "{days} j"
+STATS_NEVER_SOLD = "Jamais"
+STATS_DEAD_30 = "30 j"
+STATS_DEAD_60 = "60 j"
+STATS_DEAD_90 = "90 j"
+
 # --- Alertes
 ALERTS_TITLE = "Alertes"
 ALERTS_LOW_STOCK = "Stock faible"
@@ -416,7 +477,7 @@ SETTINGS_SHOW_CREDIT = "Imprimer le payé / reste à payer sur les ventes à cr�
 SETTINGS_PREVIEW_TITLE = "Aperçu du reçu"
 SETTINGS_LANGUAGE_SECTION = "Langue"
 SETTINGS_LANGUAGE_FR = "Français"
-SETTINGS_LANGUAGE_AR = "العربية (à venir)"
+SETTINGS_LANGUAGE_AR = "العربية"
 SETTINGS_PRINTER_SECTION = "Impression"
 SETTINGS_PRINTER_HINT = "Le choix de l'imprimante est propre à cet ordinateur."
 SETTINGS_PRINTER_DEFAULT = "Imprimante par défaut du système"
@@ -426,6 +487,21 @@ SETTINGS_PRINTER_DRAWER = "Ouvrir tiroir caisse"
 SETTINGS_PRINTER_TEST_SENT = "Page de test envoyée à l'imprimante."
 SETTINGS_ACCENT_SECTION = "Couleur d'accentuation"
 SETTINGS_ACCENT_CUSTOM = "Personnalisée…"
+SETTINGS_APPEARANCE_SECTION = "Apparence"
+SETTINGS_THEME_MODE = "Mode"
+SETTINGS_MODE_LIGHT = "Clair"
+SETTINGS_MODE_DARK = "Sombre"
+SETTINGS_ACCENT_LABEL = "Couleur d'accentuation"
+SETTINGS_CUSTOM_COLORS = "Couleurs personnalisées (avancé)"
+SETTINGS_CUSTOM_HINT = (
+    "Laissez une couleur par défaut pour suivre le mode. Les couleurs "
+    "personnalisées s'appliquent immédiatement — un aperçu en direct."
+)
+SETTINGS_COLOR_BG = "Arrière-plan"
+SETTINGS_COLOR_SURFACE = "Cartes / surfaces"
+SETTINGS_COLOR_TEXT = "Texte"
+SETTINGS_COLOR_BORDER = "Bordures"
+SETTINGS_COLOR_RESET = "Réinitialiser"
 SETTINGS_SAVED_TOAST = "Réglages enregistrés avec succès."
 SETTINGS_RESTART_REQUIRED = (
     "La langue de l'interface a été modifiée. Veuillez redémarrer "
@@ -634,5 +710,100 @@ IMPORT_COL_ROW = "Ligne"
 IMPORT_COL_ERROR = "Erreur"
 IMPORT_FILE_FILTER = "Fichiers CSV (*.csv)"
 IMPORT_DONE_TOAST = "Import terminé : {created} créés, {updated} mis à jour."
+
+# ============================================================================
+# Phase 14 — Achats & Fournisseurs, historique mouvements, stock dormant,
+# facture suspendue, solde client & tarif habituel
+# ============================================================================
+
+# --- Navigation (écran fusionné Achats & Fournisseurs)
+NAV_PURCHASES = "Achats & Fourn."
+
+# --- Onglets de l'écran Achats & Fournisseurs
+PURCHASES_TAB_SUPPLIERS = "Fournisseurs"
+PURCHASES_TAB_ORDERS = "Bons de réception"
+
+# --- Onglets de la fiche fournisseur
+SUPPLIER_TAB_INFO = "Informations"
+SUPPLIER_TAB_ORDERS = "Bons de réception"
+
+# --- Cartes statistiques de la fiche fournisseur
+SUPPLIER_STAT_PURCHASED = "Total acheté"
+SUPPLIER_STAT_PAID = "Total payé"
+SUPPLIER_STAT_DUE = "Reste dû"
+
+# --- Vue globale des bons de réception (filtres)
+PO_FILTER_SUPPLIER = "Fournisseur"
+PO_FILTER_ALL_SUPPLIERS = "Tous les fournisseurs"
+PO_FILTER_STATUS = "Statut"
+PO_STATUS_ALL = "Tous"
+PO_STATUS_PAID = "Payé"
+PO_STATUS_PARTIAL = "Partiel"
+PO_STATUS_UNPAID = "Impayé"
+PO_FILTER_FROM = "Du"
+PO_FILTER_TO = "Au"
+PO_FILTER_APPLY = "Filtrer"
+
+# --- Vue globale des bons de réception (tableau)
+PO_GCOL_DATE = "Date"
+PO_GCOL_SUPPLIER = "Fournisseur"
+PO_GCOL_REF = "Réf"
+PO_GCOL_TOTAL = "Total"
+PO_GCOL_PAID = "Payé"
+PO_GCOL_BALANCE = "Reste dû"
+PO_GCOL_STATUS = "Statut"
+PO_GCOL_ACTIONS = "Actions"
+PO_NEW_ORDER = "Nouveau bon"
+PO_ACTION_PAYMENT = "Paiement"
+PO_ACTION_DETAILS = "Détails"
+PO_ORDERS_EMPTY = "Aucun bon de réception"
+PO_ORDERS_EMPTY_HINT = "Créez un bon pour réceptionner du stock."
+PO_UNKNOWN_SUPPLIER = "Fournisseur inconnu"
+
+# --- Dialogue Bon de réception (création / détails)
+PO_DIALOG_NEW = "Nouveau bon de réception"
+PO_DIALOG_DETAILS = "Détails du bon"
+PO_LINES_SECTION = "Lignes de commande"
+PO_LINE_PRODUCT_PLACEHOLDER = "Rechercher un produit…"
+PO_ADD_LINE_ROW = "Ajouter une ligne"
+PO_SUBMIT_UPDATE_STOCK = "Valider et mettre à jour le stock"
+PO_CREATED_TOAST = "Bon créé — stock mis à jour."
+PO_SELECT_SUPPLIER = "Sélectionnez un fournisseur."
+PO_NEED_ONE_LINE = "Ajoutez au moins une ligne avec un produit et un coût."
+
+# --- Fiche produit : onglets (informations / historique)
+PRODUCT_TAB_INFO = "Informations"
+PRODUCT_TAB_HISTORY = "Historique"
+MOVEMENT_STOCK_AFTER = "Stock : {qty} u."
+MOVEMENT_LOAD_MORE = "Voir plus"
+
+# --- Alertes : stock dormant
+ALERTS_DEAD_STOCK_IN_STOCK = "En stock : {qty} u."
+ALERTS_DEAD_STOCK_NOT_SOLD = "Pas vendu depuis {days} jours"
+ALERTS_DEAD_STOCK_NEVER = "Jamais vendu"
+ALERTS_DEAD_STOCK_CREATE_PO = "Créer bon"
+ALERTS_DEAD_STOCK_EMPTY = "Aucun produit dormant sur {period} jours"
+ALERTS_DEAD_STOCK_EMPTY_HINT = "Le stock tourne bien sur cette durée."
+ALERTS_NO_CATEGORY = "Sans catégorie"
+
+# --- Caisse : facture suspendue (parquer / reprendre)
+CHECKOUT_SUSPEND = "Suspendre"
+CHECKOUT_RESUME = "Reprendre"
+CHECKOUT_SUSPEND_TIP = "Suspendre la facture en cours (F9)"
+CHECKOUT_RESUME_TIP = "Reprendre une facture suspendue (F10)"
+CHECKOUT_SUSPEND_EMPTY = "Panier vide — rien à suspendre"
+CHECKOUT_SUSPENDED_TOAST = "Facture suspendue"
+CHECKOUT_RESUME_CONFIRM = (
+    "Le panier actuel sera suspendu avant de rappeler. Continuer ?"
+)
+CHECKOUT_PARKED_ENTRY = "{time} — {count} articles — Client : {customer}"
+
+# --- Caisse : solde client & tarif habituel
+CHECKOUT_BALANCE_WARNING = "⚠ Solde impayé : {balance}"
+CHECKOUT_PRICE_LEVEL_APPLIED = "Tarif {level} appliqué (client habituel)"
+
+# --- Fiche client : tarif habituel (niveau de prix par défaut)
+CUSTOMER_DEFAULT_PRICE_LEVEL = "Tarif habituel"
+CUSTOMER_PRICE_LEVEL_NONE = "Aucun (au choix du caissier)"
 
 ACTION_CLOSE = "Fermer"

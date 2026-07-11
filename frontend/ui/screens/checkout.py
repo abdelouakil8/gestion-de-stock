@@ -9,13 +9,14 @@ checkout — the client never sends prices. F12 opens the payment dialog
 """
 
 import tempfile
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
 import qtawesome as qta
 import shiboken6
 from loguru import logger
-from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtCore import QPoint, QSize, Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QPushButton,
     QSizePolicy,
     QSpinBox,
@@ -37,10 +39,10 @@ from PySide6.QtWidgets import (
 from services.workers import run_api
 from ui import format as fmt
 from ui import strings
-from ui.styles.tokens import ICON_SIZES, NEUTRAL, SPACING, THUMB_SIZES
+from ui.styles.tokens import ICON_SIZES, NEUTRAL, SPACING
 from ui.widgets.badge import Badge
 from ui.widgets.customer_search import CustomerSearchBox
-from ui.widgets.modal import show_error
+from ui.widgets.modal import ask_confirm, show_error
 from ui.widgets.payment_dialogs import CheckoutPaymentDialog
 from ui.widgets.states import EmptyState
 from ui.widgets.thumb import Thumb
@@ -55,7 +57,9 @@ _PRICE_FIELDS = {
 # One control height for every editable cell so a cart row reads as a single
 # aligned band instead of a jumble of differently-sized widgets.
 _CELL_CONTROL_H = 34
-# A generous product thumbnail; the row hugs it (compact rows, big image).
+# Thumbnails: larger in the search pop-up (operator needs to identify
+# the product at a glance) than in the dense cart table.
+_RESULT_THUMB = 60
 _CART_THUMB = 44
 
 
@@ -114,18 +118,32 @@ class _ResultRow(QWidget):
     def __init__(self, product: dict) -> None:
         super().__init__()
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(
-            SPACING["xs"], SPACING["xs"], SPACING["xs"], SPACING["xs"]
-        )
+        sm = SPACING["sm"]
+        layout.setContentsMargins(sm, sm, SPACING["md"], sm)
         layout.setSpacing(SPACING["md"])
 
-        thumb = Thumb(THUMB_SIZES["list"])
+        thumb = Thumb(_RESULT_THUMB)
         thumb.set_product(product)
         layout.addWidget(thumb)
 
+        info = QVBoxLayout()
+        info.setSpacing(2)
+        info.setContentsMargins(0, 0, 0, 0)
         name = QLabel(product["name"])
-        name.setStyleSheet("font-weight: 600; background: transparent;")
-        layout.addWidget(name, stretch=1)
+        name.setStyleSheet(
+            "font-weight: 600; font-size: 14px; background: transparent;"
+        )
+        info.addWidget(name)
+
+        prices = QLabel(
+            f"{strings.PRICE_DETAIL} {fmt.fmt_money(product['price_detail'])}"
+            f"  ·  {strings.PRICE_GROS} {fmt.fmt_money(product['price_gros'])}"
+            f"  ·  {strings.PRICE_SUPER_GROS} "
+            f"{fmt.fmt_money(product['price_super_gros'])}"
+        )
+        prices.setObjectName("Muted")
+        info.addWidget(prices)
+        layout.addLayout(info, stretch=1)
 
         stock = product["stock_quantity"]
         if stock <= 0:
@@ -138,16 +156,7 @@ class _ResultRow(QWidget):
             stock_badge = Badge(
                 strings.CHECKOUT_STOCK_BADGE.format(count=stock), "success"
             )
-        layout.addWidget(stock_badge)
-
-        prices = QLabel(
-            f"{strings.PRICE_DETAIL} {fmt.fmt_money(product['price_detail'])}"
-            f"  ·  {strings.PRICE_GROS} {fmt.fmt_money(product['price_gros'])}"
-            f"  ·  {strings.PRICE_SUPER_GROS} "
-            f"{fmt.fmt_money(product['price_super_gros'])}"
-        )
-        prices.setObjectName("Muted")
-        layout.addWidget(prices)
+        layout.addWidget(stock_badge, alignment=Qt.AlignmentFlag.AlignVCenter)
 
 
 class CheckoutScreen(QWidget):
@@ -157,6 +166,11 @@ class CheckoutScreen(QWidget):
         self.store_id = store_id
         self.cart: list[CartLine] = []
         self.customer: dict | None = None
+        # Suspended carts (park & recall). Each entry is a snapshot dict.
+        self._parked_sales: list[dict] = []
+        # Price level auto-applied to new lines while a "habitual" customer is
+        # attached (None = each line keeps its own default).
+        self._preferred_level: str | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(*[SPACING["xl"]] * 4)
@@ -188,6 +202,14 @@ class CheckoutScreen(QWidget):
         header.addWidget(self.clear_customer_button)
         layout.addLayout(header)
 
+        # Outstanding-balance warning — prominent, directly under the customer
+        # strip so it is always visible without scrolling.
+        self.balance_warning = QLabel("")
+        self.balance_warning.setObjectName("BalanceWarning")
+        self.balance_warning.setWordWrap(True)
+        self.balance_warning.hide()
+        layout.addWidget(self.balance_warning)
+
         self.search = QLineEdit()
         self.search.setObjectName("SearchInput")
         self.search.setPlaceholderText(strings.CHECKOUT_SEARCH_PLACEHOLDER)
@@ -203,7 +225,6 @@ class CheckoutScreen(QWidget):
         self._search_debounce.timeout.connect(self._run_product_search)
 
         self.results = QListWidget()
-        self.results.setMaximumHeight(212)
         self.results.itemActivated.connect(self._on_result_chosen)
         self.results.hide()
         layout.addWidget(self.results)
@@ -267,6 +288,22 @@ class CheckoutScreen(QWidget):
         layout.addWidget(self.cart_stack, stretch=1)
 
         footer = QHBoxLayout()
+        # Park & recall controls (left side of the caisse action bar).
+        self.suspend_button = QPushButton(
+            qta.icon("fa5s.pause", color=NEUTRAL["600"]), strings.CHECKOUT_SUSPEND
+        )
+        self.suspend_button.setObjectName("Secondary")
+        self.suspend_button.setToolTip(strings.CHECKOUT_SUSPEND_TIP)
+        self.suspend_button.clicked.connect(self._suspend_sale)
+        footer.addWidget(self.suspend_button)
+        self.resume_button = QPushButton(
+            qta.icon("fa5s.play", color=NEUTRAL["600"]), strings.CHECKOUT_RESUME
+        )
+        self.resume_button.setObjectName("Secondary")
+        self.resume_button.setToolTip(strings.CHECKOUT_RESUME_TIP)
+        self.resume_button.clicked.connect(self._resume_sale)
+        self.resume_button.setEnabled(False)
+        footer.addWidget(self.resume_button)
         footer.addStretch(1)
         total_caption = QLabel(strings.CHECKOUT_TOTAL)
         total_caption.setObjectName("Caption")
@@ -286,6 +323,8 @@ class CheckoutScreen(QWidget):
         layout.addLayout(footer)
 
         QShortcut(QKeySequence(Qt.Key.Key_F12), self, activated=self._checkout)
+        QShortcut(QKeySequence(Qt.Key.Key_F9), self, activated=self._suspend_sale)
+        QShortcut(QKeySequence(Qt.Key.Key_F10), self, activated=self._resume_sale)
 
         self._rebuild_table()
 
@@ -295,12 +334,66 @@ class CheckoutScreen(QWidget):
         self.customer = customer
         self.customer_search.clear()
         self._refresh_customer_strip()
+        self._apply_customer_pricing(customer)
+        self._load_customer_balance(customer)
         self.search.setFocus()
 
     def _clear_customer(self) -> None:
         self.customer = None
+        self._preferred_level = None
+        self._hide_balance_warning()
         self._refresh_customer_strip()
         self.search.setFocus()
+
+    # ----------------------------------------------- customer balance / tarif
+
+    def _apply_customer_pricing(self, customer: dict) -> None:
+        """Auto-apply the customer's habitual price level to the whole cart
+        and to lines added while they stay attached."""
+        level = customer.get("default_price_level")
+        if not level or level not in _PRICE_FIELDS:
+            self._preferred_level = None
+            return
+        self._preferred_level = level
+        for line in self.cart:
+            line.level = level
+            line.manual_price = None
+        if self.cart:
+            self._rebuild_table()
+        label = strings.PRICE_LEVEL_LABELS.get(level, level)
+        show_toast(self, strings.CHECKOUT_PRICE_LEVEL_APPLIED.format(level=label))
+
+    def _load_customer_balance(self, customer: dict) -> None:
+        customer_id = customer["id"]
+        run_api(
+            lambda: self.api.stats_customer(customer_id),
+            lambda stats, c=customer: self._on_customer_balance(c, stats),
+            lambda err: self._hide_balance_warning(),
+        )
+
+    def _on_customer_balance(self, customer: dict, stats: object) -> None:
+        if not shiboken6.isValid(self):
+            return
+        # The attached customer may have changed while the stats were loading.
+        if self.customer is None or str(self.customer.get("id")) != str(
+            customer.get("id")
+        ):
+            return
+        try:
+            balance = Decimal(str(stats.get("outstanding_balance", "0")))
+        except (TypeError, ValueError, ArithmeticError):
+            balance = Decimal("0")
+        if balance > 0:
+            self.balance_warning.setText(
+                strings.CHECKOUT_BALANCE_WARNING.format(balance=fmt.fmt_money(balance))
+            )
+            self.balance_warning.show()
+        else:
+            self._hide_balance_warning()
+
+    def _hide_balance_warning(self) -> None:
+        self.balance_warning.hide()
+        self.balance_warning.setText("")
 
     def _refresh_customer_strip(self) -> None:
         if self.customer:
@@ -323,6 +416,7 @@ class CheckoutScreen(QWidget):
         if not text.strip():
             self._search_debounce.stop()
             self.results.clear()
+            self.results.setFixedHeight(0)
             self.results.hide()
             return
         self._search_debounce.start()
@@ -355,6 +449,12 @@ class CheckoutScreen(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, product)
             self.results.addItem(item)
             self.results.setItemWidget(item, row)
+        if matches:
+            # Size the list to exactly fit its items — no blank space below
+            # the last row, no scrollbar for small result sets (up to 5 rows).
+            row_h = _RESULT_THUMB + SPACING["sm"] * 2  # thumb + top+bottom margins
+            visible = min(len(matches), 5)
+            self.results.setFixedHeight(row_h * visible + 10)
         self.results.setVisible(bool(matches))
 
     def _shown_products(self) -> list[dict]:
@@ -403,12 +503,17 @@ class CheckoutScreen(QWidget):
                 self._rebuild_table()
                 self._after_add()
                 return
-        self.cart.append(CartLine(product))
+        line = CartLine(product)
+        if self._preferred_level:
+            line.level = self._preferred_level
+        self.cart.append(line)
         self._rebuild_table()
         self._after_add()
 
     def _after_add(self) -> None:
         self.search.clear()
+        self.results.clear()
+        self.results.setFixedHeight(0)
         self.results.hide()
         self.search.setFocus()
 
@@ -631,6 +736,116 @@ class CheckoutScreen(QWidget):
         self._rebuild_table()
         self.search.setFocus()
 
+    # ------------------------------------------------------- park & recall
+
+    def _suspend_sale(self) -> None:
+        if not self.cart:
+            show_toast(self, strings.CHECKOUT_SUSPEND_EMPTY, kind="warning")
+            return
+        self._park_current()
+        show_toast(self, strings.CHECKOUT_SUSPENDED_TOAST)
+
+    def _park_current(self) -> None:
+        """Snapshot the current cart, append it to the parked list, clear."""
+        self._parked_sales.append(self._snapshot_cart())
+        self.cart.clear()
+        self.customer = None
+        self._preferred_level = None
+        self._hide_balance_warning()
+        self._refresh_customer_strip()
+        self._rebuild_table()
+        self._update_resume_button()
+
+    def _snapshot_cart(self) -> dict:
+        return {
+            "cart_items": [
+                {
+                    "product": line.product,
+                    "packaging": line.packaging,
+                    "quantity": line.quantity,
+                    "level": line.level,
+                    "manual_price": (
+                        str(line.manual_price)
+                        if line.manual_price is not None
+                        else None
+                    ),
+                    "discount": str(line.discount),
+                }
+                for line in self.cart
+            ],
+            "customer": self.customer,
+            "preferred_level": self._preferred_level,
+            "parked_at": datetime.now().strftime("%H:%M"),
+        }
+
+    def _resume_sale(self) -> None:
+        if not self._parked_sales:
+            return
+        # A non-empty cart is parked first (with the operator's confirmation)
+        # so no work is lost when recalling another ticket.
+        if self.cart:
+            if not ask_confirm(self, strings.CHECKOUT_RESUME_CONFIRM):
+                return
+            self._park_current()
+        if len(self._parked_sales) == 1:
+            self._restore_index(0)
+        else:
+            self._show_parked_menu()
+
+    def _show_parked_menu(self) -> None:
+        menu = QMenu(self)
+        for index, snapshot in enumerate(self._parked_sales):
+            customer = snapshot.get("customer")
+            name = customer["name"] if customer else strings.CHECKOUT_CUSTOMER_ANONYMOUS
+            label = strings.CHECKOUT_PARKED_ENTRY.format(
+                time=snapshot.get("parked_at", ""),
+                count=len(snapshot.get("cart_items", [])),
+                customer=name,
+            )
+            action = menu.addAction(
+                qta.icon("fa5s.receipt", color=NEUTRAL["600"]), label
+            )
+            action.triggered.connect(lambda _=False, i=index: self._restore_index(i))
+        menu.exec(
+            self.resume_button.mapToGlobal(QPoint(0, self.resume_button.height()))
+        )
+
+    def _restore_index(self, index: int) -> None:
+        if not 0 <= index < len(self._parked_sales):
+            return
+        snapshot = self._parked_sales.pop(index)
+        self._restore_parked(snapshot)
+
+    def _restore_parked(self, snapshot: dict) -> None:
+        self.cart = []
+        for item in snapshot.get("cart_items", []):
+            line = CartLine(item["product"])
+            line.packaging = item.get("packaging")
+            line.quantity = item.get("quantity", 1)
+            line.level = item.get("level", "detail")
+            manual = item.get("manual_price")
+            line.manual_price = Decimal(manual) if manual is not None else None
+            line.discount = Decimal(item.get("discount", "0.00"))
+            self.cart.append(line)
+        self.customer = snapshot.get("customer")
+        self._preferred_level = snapshot.get("preferred_level")
+        self._refresh_customer_strip()
+        self._rebuild_table()
+        self._update_resume_button()
+        if self.customer:
+            self._load_customer_balance(self.customer)
+        else:
+            self._hide_balance_warning()
+        self.search.setFocus()
+
+    def _update_resume_button(self) -> None:
+        count = len(self._parked_sales)
+        self.resume_button.setEnabled(count > 0)
+        if count > 0:
+            self.resume_button.setText(f"{strings.CHECKOUT_RESUME} ({count})")
+        else:
+            self.resume_button.setText(strings.CHECKOUT_RESUME)
+
     # ------------------------------------------------------------ checkout
 
     def _cart_total(self) -> Decimal:
@@ -680,6 +895,8 @@ class CheckoutScreen(QWidget):
         customer_name = self.customer["name"] if self.customer else None
         self.cart.clear()
         self.customer = None
+        self._preferred_level = None
+        self._hide_balance_warning()
         self._refresh_customer_strip()
         self._rebuild_table()
         # Stock changed: drop any stale search results (search is server-side).

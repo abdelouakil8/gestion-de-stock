@@ -20,6 +20,7 @@ from app.models.purchase_order import (
 from app.models.refund import Refund, RefundItem
 from app.models.sale import Payment, Sale, SaleItem
 from app.models.sale_sequence import SaleSequence
+from app.models.stock_movement import MovementType, StockMovement
 from app.models.store import Store
 from app.models.store_settings import StoreSettings
 from app.models.supplier import Supplier
@@ -38,6 +39,8 @@ __all__ = [
     "Sale",
     "SaleItem",
     "SaleSequence",
+    "StockMovement",
+    "MovementType",
     "Store",
     "StoreSettings",
     "Supplier",

@@ -30,3 +30,13 @@ class StoreSettings(BaseModel):
     theme_accent: Mapped[str] = mapped_column(
         String(7), nullable=False, default="#2563EB"
     )
+    # Theme mode ("light" | "dark") + optional per-role custom overrides. A
+    # NULL override means "use the mode default"; a hex string overrides that
+    # structural color. Validation (mode whitelist, hex) lives in the schema.
+    theme_mode: Mapped[str] = mapped_column(
+        String(5), nullable=False, default="light", server_default="light"
+    )
+    theme_bg: Mapped[str | None] = mapped_column(String(7), default=None)
+    theme_surface: Mapped[str | None] = mapped_column(String(7), default=None)
+    theme_text: Mapped[str | None] = mapped_column(String(7), default=None)
+    theme_border: Mapped[str | None] = mapped_column(String(7), default=None)

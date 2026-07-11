@@ -11,17 +11,25 @@ from app.models import Product
 from app.schemas.statistics import (
     AssociationRule,
     AssociationsResult,
+    CategoryStat,
+    CustomerInsights,
     CustomerStats,
+    DailyPoint,
+    DeadStockItem,
+    FinancialSnapshot,
     FrequentItemset,
+    InventoryStats,
     OverviewStats,
     PaymentMethodBreakdown,
     ProductRef,
     ProductStats,
+    SalesPatterns,
     StatsSummary,
     TopCustomer,
     TopProduct,
 )
 from app.services import customers, reports, statistics
+from app.services import settings as settings_service
 from app.services.analysis import apriori, baskets
 
 router = APIRouter()
@@ -52,9 +60,11 @@ def top_products(
     date_to: date,
     db: DbDep,
     limit: int = Query(default=10, ge=1, le=100),
+    sort: str = Query(default="quantity", pattern="^(quantity|profit)$"),
 ) -> list:
+    """Best sellers by units sold (default) or by total gross profit."""
     start, end = _day_bounds(date_from, date_to)
-    return statistics.top_products(db, store_id, start, end, limit=limit)
+    return statistics.top_products(db, store_id, start, end, limit=limit, sort=sort)
 
 
 @router.get("/overview", response_model=OverviewStats, dependencies=[OwnerPinDep])
@@ -112,6 +122,75 @@ def payment_methods(store_id: UUID, date_from: date, date_to: date, db: DbDep) -
     """Revenue breakdown by payment method (cash/card/mobile/other)."""
     start, end = _day_bounds(date_from, date_to)
     return statistics.payment_method_breakdown(db, store_id, start, end)
+
+
+@router.get(
+    "/daily-evolution", response_model=list[DailyPoint], dependencies=[OwnerPinDep]
+)
+def daily_evolution(store_id: UUID, date_from: date, date_to: date, db: DbDep) -> list:
+    """Revenue + profit per calendar day over the range (zero-filled)."""
+    start, end = _day_bounds(date_from, date_to)
+    return statistics.daily_evolution(db, store_id, start, end)
+
+
+@router.get("/inventory", response_model=InventoryStats, dependencies=[OwnerPinDep])
+def inventory(store_id: UUID, db: DbDep):
+    """Capital tied up in stock (at cost and at retail) and stock health."""
+    return statistics.inventory_stats(db, store_id)
+
+
+@router.get(
+    "/dead-stock", response_model=list[DeadStockItem], dependencies=[OwnerPinDep]
+)
+def dead_stock(
+    store_id: UUID,
+    db: DbDep,
+    days: int = Query(default=60, ge=1, le=365),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> list:
+    """Active products still in stock that have not sold in `days` days."""
+    return statistics.dead_stock(db, store_id, days=days, limit=limit)
+
+
+@router.get(
+    "/category-breakdown",
+    response_model=list[CategoryStat],
+    dependencies=[OwnerPinDep],
+)
+def category_breakdown(
+    store_id: UUID, date_from: date, date_to: date, db: DbDep
+) -> list:
+    """Revenue/profit/quantity by product category over the range."""
+    start, end = _day_bounds(date_from, date_to)
+    return statistics.category_breakdown(db, store_id, start, end)
+
+
+@router.get("/sales-patterns", response_model=SalesPatterns, dependencies=[OwnerPinDep])
+def sales_patterns(store_id: UUID, date_from: date, date_to: date, db: DbDep):
+    """Busy hours and weekdays (store-local) over the range."""
+    start, end = _day_bounds(date_from, date_to)
+    return statistics.sales_patterns(db, store_id, start, end)
+
+
+@router.get(
+    "/customer-insights",
+    response_model=CustomerInsights,
+    dependencies=[OwnerPinDep],
+)
+def customer_insights(store_id: UUID, date_from: date, date_to: date, db: DbDep):
+    """Active / new / returning customers and guest sales over the range."""
+    start, end = _day_bounds(date_from, date_to)
+    return statistics.customer_insights(db, store_id, start, end)
+
+
+@router.get(
+    "/financial-snapshot",
+    response_model=FinancialSnapshot,
+    dependencies=[OwnerPinDep],
+)
+def financial_snapshot(store_id: UUID, db: DbDep):
+    """Outstanding customer credit and supplier debt (all-time balances)."""
+    return statistics.financial_snapshot(db, store_id)
 
 
 @router.get(
@@ -178,7 +257,11 @@ def associations(
 @router.get("/report.pdf", dependencies=[OwnerPinDep])
 def report_pdf(store_id: UUID, date_from: date, date_to: date, db: DbDep):
     start, end = _day_bounds(date_from, date_to)
-    pdf_bytes = reports.build_summary_report_pdf(db, store_id, start, end)
+    s = settings_service.get_settings(db, store_id)
+    lang = (s.ui_language or "fr") if s else "fr"
+    pdf_bytes = reports.build_summary_report_pdf(
+        db, store_id, start, end, language=lang
+    )
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -189,7 +272,11 @@ def report_pdf(store_id: UUID, date_from: date, date_to: date, db: DbDep):
 @router.get("/report.xlsx", dependencies=[OwnerPinDep])
 def report_xlsx(store_id: UUID, date_from: date, date_to: date, db: DbDep):
     start, end = _day_bounds(date_from, date_to)
-    xlsx_bytes = reports.build_summary_report_xlsx(db, store_id, start, end)
+    s = settings_service.get_settings(db, store_id)
+    lang = (s.ui_language or "fr") if s else "fr"
+    xlsx_bytes = reports.build_summary_report_xlsx(
+        db, store_id, start, end, language=lang
+    )
     return Response(
         content=xlsx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

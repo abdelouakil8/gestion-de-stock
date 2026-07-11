@@ -292,6 +292,17 @@ PRODUCT_SAVED_TOAST = "تم حفظ المنتج «{name}»."
 # --- Fiche produit (détail + statistiques)
 PRODUCT_DETAIL_TITLE = "تفاصيل المنتج"
 PRODUCT_DETAIL_STATS = "مبيعات المنتج"
+PRODUCT_DETAIL_HISTORY = "سجل الحركات"
+MOVEMENT_COL_DATE = "التاريخ"
+MOVEMENT_COL_TYPE = "النوع"
+MOVEMENT_COL_DELTA = "الكمية"
+MOVEMENT_COL_AFTER = "بعد"
+MOVEMENT_COL_REF = "المرجع"
+MOVEMENT_TYPE_SALE = "بيع"
+MOVEMENT_TYPE_PURCHASE = "شراء"
+MOVEMENT_TYPE_REFUND = "استرداد"
+MOVEMENT_TYPE_ADJUSTMENT = "تعديل"
+MOVEMENT_EMPTY = "لا توجد حركات مسجلة لهذا المنتج."
 PRODUCT_STAT_UNITS = "الوحدات المباعة"
 PRODUCT_STAT_REVENUE = "الإيرادات"
 PRODUCT_STAT_PROFIT = "الأرباح"
@@ -350,6 +361,56 @@ STATS_ASSOCIATIONS_EMPTY_HINT = (
 )
 STATS_PIN_REQUIRED = "الإحصائيات تتطلب رمز PIN الخاص بالمالك."
 
+# --- Statistiques : tableau de bord
+STATS_TREND_TITLE = "تطور الإيرادات والأرباح"
+STATS_CHART_EMPTY = "لا توجد بيانات لعرضها في هذه الفترة"
+STATS_REVENUE_LEGEND = "الإيرادات"
+STATS_PROFIT_LEGEND = "الأرباح"
+STATS_DONUT_TOTAL = "الإجمالي"
+STATS_ITEMS_PER_SALE = "{value} عنصر / بيع"
+# Instantané financier & stock
+STATS_STOCK_VALUE = "قيمة المخزون"
+STATS_STOCK_VALUE_RETAIL = "قيمة البيع: {value}"
+STATS_CUSTOMER_CREDIT = "ديون العملاء"
+STATS_CREDIT_SALES = "{count} مبيعات غير مدفوعة"
+STATS_SUPPLIER_DEBT = "ديون الموردين"
+STATS_SUPPLIER_ORDERS = "{count} طلبات مفتوحة"
+STATS_OUT_OF_STOCK = "منتجات نافدة"
+STATS_LOW_STOCK_HINT = "+ {count} تحت عتبة التنبيه"
+# Meilleures ventes
+STATS_SORT_QTY = "الكمية"
+STATS_SORT_PROFIT = "الربح"
+STATS_COL_MARGIN = "الهامش"
+# Catégories
+STATS_CATEGORY_TITLE = "المبيعات حسب الفئة"
+STATS_CATEGORY_MARGIN_TITLE = "ربحية الفئات"
+STATS_NO_CATEGORY = "بدون فئة"
+STATS_OTHERS = "أخرى"
+# Affluence (heures / jours)
+STATS_BUSY_TITLE = "الازدحام"
+STATS_BUSY_HOURS = "ساعات"
+STATS_BUSY_DAYS = "أيام"
+STATS_HOUR_LABEL = "{hour}س"
+WEEKDAY_SHORT = ["إثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت", "أحد"]
+# Meilleurs clients
+STATS_TOP_CUSTOMERS = "أفضل العملاء"
+STATS_COL_CUSTOMER = "العميل"
+STATS_COL_PHONE = "الهاتف"
+STATS_COL_PURCHASES = "المشتريات"
+STATS_CUSTOMERS_EMPTY = "لا يوجد عملاء في هذه الفترة"
+STATS_CUSTOMERS_SUB = "{active} نشط · {new} جديد"
+# Stock dormant
+STATS_DEAD_STOCK_TITLE = "المخزون الراكد"
+STATS_DEAD_STOCK_EMPTY = "لا يوجد مخزون راكد في هذه المدة"
+STATS_COL_STOCK = "المخزون"
+STATS_COL_TIED = "رأس المال المجمّد"
+STATS_COL_LAST_SALE = "آخر بيع"
+STATS_DAYS_AGO = "{days} يوم"
+STATS_NEVER_SOLD = "أبداً"
+STATS_DEAD_30 = "30 ي"
+STATS_DEAD_60 = "60 ي"
+STATS_DEAD_90 = "90 ي"
+
 # --- Alertes
 ALERTS_TITLE = "التنبيهات"
 ALERTS_LOW_STOCK = "مخزون منخفض"
@@ -390,6 +451,20 @@ SETTINGS_PRINTER_DRAWER = "فتح درج النقود"
 SETTINGS_PRINTER_TEST_SENT = "تم إرسال صفحة الاختبار إلى الطابعة."
 SETTINGS_ACCENT_SECTION = "لون التمييز"
 SETTINGS_ACCENT_CUSTOM = "مخصص…"
+SETTINGS_APPEARANCE_SECTION = "المظهر"
+SETTINGS_THEME_MODE = "الوضع"
+SETTINGS_MODE_LIGHT = "فاتح"
+SETTINGS_MODE_DARK = "داكن"
+SETTINGS_ACCENT_LABEL = "لون التمييز"
+SETTINGS_CUSTOM_COLORS = "ألوان مخصصة (متقدم)"
+SETTINGS_CUSTOM_HINT = (
+    "اترك اللون الافتراضي ليتبع الوضع. الألوان المخصصة تُطبّق فوراً — معاينة حية."
+)
+SETTINGS_COLOR_BG = "الخلفية"
+SETTINGS_COLOR_SURFACE = "البطاقات / الأسطح"
+SETTINGS_COLOR_TEXT = "النص"
+SETTINGS_COLOR_BORDER = "الحدود"
+SETTINGS_COLOR_RESET = "إعادة تعيين"
 SETTINGS_SAVED_TOAST = "تم حفظ الإعدادات."
 SETTINGS_RESTART_REQUIRED = (
     "تم تغيير لغة الواجهة. يرجى إعادة تشغيل التطبيق لتطبيق التغيير."
@@ -594,4 +669,97 @@ IMPORT_COL_ROW = "السطر"
 IMPORT_COL_ERROR = "الخطأ"
 IMPORT_FILE_FILTER = "ملفات CSV (*.csv)"
 IMPORT_DONE_TOAST = "اكتمل الاستيراد: تم إنشاء {created}، وتم تحديث {updated}."
+# ============================================================================
+# Phase 14 — المشتريات والموردون، سجل الحركات، المخزون الراكد،
+# تعليق الفاتورة، رصيد الزبون والسعر المعتاد
+# ============================================================================
+
+# --- التنقل (شاشة المشتريات والموردون المدمجة)
+NAV_PURCHASES = "المشتريات والموردون"
+
+# --- تبويبات شاشة المشتريات والموردون
+PURCHASES_TAB_SUPPLIERS = "الموردون"
+PURCHASES_TAB_ORDERS = "سندات الاستلام"
+
+# --- تبويبات بطاقة المورّد
+SUPPLIER_TAB_INFO = "المعلومات"
+SUPPLIER_TAB_ORDERS = "سندات الاستلام"
+
+# --- بطاقات إحصائيات المورّد
+SUPPLIER_STAT_PURCHASED = "إجمالي المشتريات"
+SUPPLIER_STAT_PAID = "إجمالي المدفوع"
+SUPPLIER_STAT_DUE = "المتبقي"
+
+# --- العرض الشامل لسندات الاستلام (المرشّحات)
+PO_FILTER_SUPPLIER = "المورّد"
+PO_FILTER_ALL_SUPPLIERS = "كل الموردين"
+PO_FILTER_STATUS = "الحالة"
+PO_STATUS_ALL = "الكل"
+PO_STATUS_PAID = "مدفوع"
+PO_STATUS_PARTIAL = "جزئي"
+PO_STATUS_UNPAID = "غير مدفوع"
+PO_FILTER_FROM = "من"
+PO_FILTER_TO = "إلى"
+PO_FILTER_APPLY = "تصفية"
+
+# --- العرض الشامل لسندات الاستلام (الجدول)
+PO_GCOL_DATE = "التاريخ"
+PO_GCOL_SUPPLIER = "المورّد"
+PO_GCOL_REF = "المرجع"
+PO_GCOL_TOTAL = "الإجمالي"
+PO_GCOL_PAID = "المدفوع"
+PO_GCOL_BALANCE = "المتبقي"
+PO_GCOL_STATUS = "الحالة"
+PO_GCOL_ACTIONS = "إجراءات"
+PO_NEW_ORDER = "سند جديد"
+PO_ACTION_PAYMENT = "دفعة"
+PO_ACTION_DETAILS = "تفاصيل"
+PO_ORDERS_EMPTY = "لا توجد سندات استلام"
+PO_ORDERS_EMPTY_HINT = "أنشئ سنداً لاستلام المخزون."
+PO_UNKNOWN_SUPPLIER = "مورّد غير معروف"
+
+# --- نافذة سند الاستلام (إنشاء / تفاصيل)
+PO_DIALOG_NEW = "سند استلام جديد"
+PO_DIALOG_DETAILS = "تفاصيل السند"
+PO_LINES_SECTION = "سطور الطلب"
+PO_LINE_PRODUCT_PLACEHOLDER = "ابحث عن منتج…"
+PO_ADD_LINE_ROW = "إضافة سطر"
+PO_SUBMIT_UPDATE_STOCK = "تأكيد وتحديث المخزون"
+PO_CREATED_TOAST = "تم إنشاء السند — تم تحديث المخزون."
+PO_SELECT_SUPPLIER = "اختر مورّداً."
+PO_NEED_ONE_LINE = "أضف سطراً واحداً على الأقل بمنتج وتكلفة."
+
+# --- بطاقة المنتج: التبويبات (المعلومات / السجل)
+PRODUCT_TAB_INFO = "المعلومات"
+PRODUCT_TAB_HISTORY = "السجل"
+MOVEMENT_STOCK_AFTER = "المخزون: {qty} و."
+MOVEMENT_LOAD_MORE = "عرض المزيد"
+
+# --- التنبيهات: المخزون الراكد
+ALERTS_DEAD_STOCK_IN_STOCK = "في المخزون: {qty} و."
+ALERTS_DEAD_STOCK_NOT_SOLD = "لم يُبَع منذ {days} يوماً"
+ALERTS_DEAD_STOCK_NEVER = "لم يُبَع قط"
+ALERTS_DEAD_STOCK_CREATE_PO = "إنشاء سند"
+ALERTS_DEAD_STOCK_EMPTY = "لا يوجد مخزون راكد خلال {period} يوماً"
+ALERTS_DEAD_STOCK_EMPTY_HINT = "المخزون يدور جيداً خلال هذه المدة."
+ALERTS_NO_CATEGORY = "بدون فئة"
+
+# --- الكاشير: تعليق الفاتورة (تعليق / استئناف)
+CHECKOUT_SUSPEND = "تعليق"
+CHECKOUT_RESUME = "استئناف"
+CHECKOUT_SUSPEND_TIP = "تعليق الفاتورة الحالية (F9)"
+CHECKOUT_RESUME_TIP = "استئناف فاتورة معلّقة (F10)"
+CHECKOUT_SUSPEND_EMPTY = "السلة فارغة — لا شيء لتعليقه"
+CHECKOUT_SUSPENDED_TOAST = "تم تعليق الفاتورة"
+CHECKOUT_RESUME_CONFIRM = "سيتم تعليق السلة الحالية قبل الاستدعاء. هل تريد المتابعة؟"
+CHECKOUT_PARKED_ENTRY = "{time} — {count} أصناف — الزبون: {customer}"
+
+# --- الكاشير: رصيد الزبون والسعر المعتاد
+CHECKOUT_BALANCE_WARNING = "⚠ رصيد غير مسدد: {balance}"
+CHECKOUT_PRICE_LEVEL_APPLIED = "تم تطبيق سعر {level} (زبون معتاد)"
+
+# --- بطاقة الزبون: السعر المعتاد (مستوى السعر الافتراضي)
+CUSTOMER_DEFAULT_PRICE_LEVEL = "السعر المعتاد"
+CUSTOMER_PRICE_LEVEL_NONE = "لا شيء (حسب اختيار الكاشير)"
+
 ACTION_CLOSE = "إغلاق"

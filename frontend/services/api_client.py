@@ -169,6 +169,20 @@ class ApiClient:
     def delete_product_image(self, product_id: str) -> None:
         return self._request("DELETE", f"/products/{product_id}/image", owner=True)
 
+    def get_product_movements(
+        self,
+        store_id: str,
+        product_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict:
+        """Paginated movement ledger for one product (newest first)."""
+        return self._request(
+            "GET",
+            f"/products/{product_id}/movements",
+            params={"store_id": store_id, "limit": limit, "offset": offset},
+        )
+
     # -------------------------------------------------------------- customers
 
     def list_customers(
@@ -289,8 +303,14 @@ class ApiClient:
         )
 
     def stats_top_products(
-        self, store_id: str, date_from: str, date_to: str, limit: int = 10
+        self,
+        store_id: str,
+        date_from: str,
+        date_to: str,
+        limit: int = 10,
+        sort: str = "quantity",
     ) -> list[dict]:
+        """Best sellers by 'quantity' (default) or by 'profit'."""
         return self._request(
             "GET",
             "/statistics/top-products",
@@ -300,6 +320,7 @@ class ApiClient:
                 "date_from": date_from,
                 "date_to": date_to,
                 "limit": limit,
+                "sort": sort,
             },
         )
 
@@ -363,6 +384,74 @@ class ApiClient:
             "/statistics/payment-methods",
             owner=True,
             params={"store_id": store_id, "date_from": date_from, "date_to": date_to},
+        )
+
+    def stats_daily_evolution(
+        self, store_id: str, date_from: str, date_to: str
+    ) -> list[dict]:
+        """Revenue + profit per day over the range (zero-filled)."""
+        return self._request(
+            "GET",
+            "/statistics/daily-evolution",
+            owner=True,
+            params={"store_id": store_id, "date_from": date_from, "date_to": date_to},
+        )
+
+    def stats_inventory(self, store_id: str) -> dict:
+        """Stock value (cost + retail) and stock-health counts."""
+        return self._request(
+            "GET", "/statistics/inventory", owner=True, params={"store_id": store_id}
+        )
+
+    def stats_dead_stock(
+        self, store_id: str, days: int = 60, limit: int = 20
+    ) -> list[dict]:
+        """Products in stock that have not sold in `days` days."""
+        return self._request(
+            "GET",
+            "/statistics/dead-stock",
+            owner=True,
+            params={"store_id": store_id, "days": days, "limit": limit},
+        )
+
+    def stats_category_breakdown(
+        self, store_id: str, date_from: str, date_to: str
+    ) -> list[dict]:
+        """Revenue/profit/quantity by product category."""
+        return self._request(
+            "GET",
+            "/statistics/category-breakdown",
+            owner=True,
+            params={"store_id": store_id, "date_from": date_from, "date_to": date_to},
+        )
+
+    def stats_sales_patterns(self, store_id: str, date_from: str, date_to: str) -> dict:
+        """Busy hours and weekdays (store-local) over the range."""
+        return self._request(
+            "GET",
+            "/statistics/sales-patterns",
+            owner=True,
+            params={"store_id": store_id, "date_from": date_from, "date_to": date_to},
+        )
+
+    def stats_customer_insights(
+        self, store_id: str, date_from: str, date_to: str
+    ) -> dict:
+        """Active / new / returning customers and guest sales over the range."""
+        return self._request(
+            "GET",
+            "/statistics/customer-insights",
+            owner=True,
+            params={"store_id": store_id, "date_from": date_from, "date_to": date_to},
+        )
+
+    def stats_financial_snapshot(self, store_id: str) -> dict:
+        """Outstanding customer credit and supplier debt (all-time)."""
+        return self._request(
+            "GET",
+            "/statistics/financial-snapshot",
+            owner=True,
+            params={"store_id": store_id},
         )
 
     # ---------------------------------------------------------------- alerts

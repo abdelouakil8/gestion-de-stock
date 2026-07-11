@@ -17,6 +17,11 @@ class SettingsBase(BaseModel):
     show_credit_details: bool = True
     ui_language: Literal["fr", "ar"] = "fr"
     theme_accent: str = Field(default="#2563EB", pattern=_HEX_COLOR)
+    theme_mode: Literal["light", "dark"] = "light"
+    theme_bg: str | None = Field(default=None, pattern=_HEX_COLOR)
+    theme_surface: str | None = Field(default=None, pattern=_HEX_COLOR)
+    theme_text: str | None = Field(default=None, pattern=_HEX_COLOR)
+    theme_border: str | None = Field(default=None, pattern=_HEX_COLOR)
 
 
 class SettingsUpdate(BaseModel):
@@ -27,6 +32,11 @@ class SettingsUpdate(BaseModel):
     show_credit_details: bool | None = None
     ui_language: Literal["fr", "ar"] | None = None
     theme_accent: str | None = Field(default=None, pattern=_HEX_COLOR)
+    theme_mode: Literal["light", "dark"] | None = None
+    theme_bg: str | None = Field(default=None, pattern=_HEX_COLOR)
+    theme_surface: str | None = Field(default=None, pattern=_HEX_COLOR)
+    theme_text: str | None = Field(default=None, pattern=_HEX_COLOR)
+    theme_border: str | None = Field(default=None, pattern=_HEX_COLOR)
 
 
 class SettingsRead(ReadSchema, SettingsBase):

@@ -100,8 +100,10 @@ def test_xlsx_has_all_sheets(db):
         "Synthèse",
         "Meilleures ventes",
         "Meilleurs clients",
+        "Catégories",
         "Modes de paiement",
         "Stock faible",
+        "Stock dormant",
         "Crédits en attente",
     ]
 

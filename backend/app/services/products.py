@@ -8,8 +8,9 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.textnorm import normalize_text
 from app.models import Product, ProductPackaging
+from app.models.stock_movement import MovementType
 from app.schemas.product import PackagingCreate, ProductCreate, ProductUpdate
-from app.services import pricing, search
+from app.services import inventory, pricing, search
 
 
 def _product_search_text(name: str, barcode: str | None) -> str:
@@ -141,12 +142,24 @@ def update_product(
             changes.get("price_gros", product.price_gros),
             changes.get("price_super_gros", product.price_super_gros),
         )
+        old_stock = product.stock_quantity
         for field, value in changes.items():
             setattr(product, field, value)
         # Recompute after all fields are merged, so name/barcode changes in
         # the same PATCH are reflected in a single canonical string.
         product.search_text = _product_search_text(product.name, product.barcode)
         _sync_packagings(db, product, data.packagings)
+        # Record a ledger entry when stock was manually adjusted.
+        if "stock_quantity" in changes:
+            delta = product.stock_quantity - old_stock
+            inventory.record_movement(
+                db,
+                store_id=product.store_id,
+                product_id=product.id,
+                delta=delta,
+                after=product.stock_quantity,
+                movement_type=MovementType.adjustment,
+            )
         db.commit()
         product = get_product(db, product_id)
     return product
