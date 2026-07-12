@@ -763,3 +763,327 @@ CUSTOMER_DEFAULT_PRICE_LEVEL = "السعر المعتاد"
 CUSTOMER_PRICE_LEVEL_NONE = "لا شيء (حسب اختيار الكاشير)"
 
 ACTION_CLOSE = "إغلاق"
+
+# ======================================================================
+# المرحلة 15/16 — تعديل الجرد، سجل الحركات، الديون، إغلاق الصندوق،
+# التقرير اليومي، لوحة التحكم.
+# ======================================================================
+
+# --- تأكيد الرمز السري (نافذة قابلة لإعادة الاستخدام)
+PIN_CONFIRM_TITLE = "التأكيد مطلوب"
+PIN_CONFIRM_PROMPT = "أدخل الرمز السري للتأكيد."
+PIN_CONFIRM_WRONG = "الرمز السري غير صحيح."
+PIN_CONFIRM_BUTTON = "تأكيد"
+
+# --- الميزة 1: تعديل الجرد
+INVENTORY_ADJUST_BUTTON = "تعديل الجرد"
+ADJUST_TITLE = "تعديل الجرد"
+ADJUST_STEP_PRODUCT = "1. اختيار المنتج"
+ADJUST_STEP_ENTRY = "2. إدخال المخزون المحصى"
+ADJUST_STEP_CONFIRM = "3. التأكيد"
+ADJUST_SEARCH_PLACEHOLDER = "ابحث عن منتج لتعديله…"
+ADJUST_CURRENT_STOCK = "المخزون الحالي: {qty} وحدة"
+ADJUST_COUNTED_LABEL = "المخزون الفعلي المحصى:"
+ADJUST_DELTA_POS = "+{n} وحدة"
+ADJUST_DELTA_NEG = "-{n} وحدة"
+ADJUST_DELTA_ZERO = "لا تغيير"
+ADJUST_REASON_LABEL = "السبب:"
+ADJUST_NOTE_LABEL = "ملاحظة (اختياري):"
+ADJUST_NOTE_PLACEHOLDER = "تعليق…"
+ADJUST_NEXT = "التالي"
+ADJUST_BACK = "رجوع"
+ADJUST_CONFIRM_BUTTON = "تأكيد التعديل"
+ADJUST_CONFIRM_SENTENCE = (
+    "سيتم تعديل مخزون « {product} » من {old} إلى {new} (الفرق: {delta})."
+)
+ADJUST_DONE_TOAST = "تم تحديث مخزون {product}: {old} ← {new} وحدة"
+ADJUST_SELECT_PRODUCT_FIRST = "اختر منتجًا أولاً."
+ADJUST_REASONS = {
+    "inventaire": "جرد فعلي",
+    "perte": "خسارة",
+    "casse": "كسر",
+    "correction": "تصحيح",
+    "autre": "أخرى",
+}
+
+# --- الميزة 2: سجل حركات المخزون
+INVENTORY_TAB_PRODUCTS = "المنتجات"
+INVENTORY_TAB_MOVEMENTS = "حركات المخزون"
+MOVEMENTS_COL_DATETIME = "التاريخ / الساعة"
+MOVEMENTS_COL_PRODUCT = "المنتج"
+MOVEMENTS_COL_CATEGORY = "الفئة"
+MOVEMENTS_COL_TYPE = "النوع"
+MOVEMENTS_COL_DELTA = "الكمية"
+MOVEMENTS_COL_AFTER = "المخزون بعد"
+MOVEMENTS_COL_REFERENCE = "المرجع"
+MOVEMENTS_COL_NOTE = "ملاحظة"
+MOVEMENTS_SEARCH_PLACEHOLDER = "تصفية حسب المنتج…"
+MOVEMENTS_FILTER_ALL_TYPES = "كل الأنواع"
+MOVEMENTS_FILTER_SALES = "المبيعات"
+MOVEMENTS_FILTER_PURCHASES = "المشتريات"
+MOVEMENTS_FILTER_ADJUSTMENTS = "التعديلات"
+MOVEMENTS_FILTER_RETURNS = "المرتجعات"
+MOVEMENTS_FILTER_ALL_CATEGORIES = "كل الفئات"
+MOVEMENTS_FROM = "من"
+MOVEMENTS_TO = "إلى"
+MOVEMENTS_EXPORT_XLSX = "تصدير Excel"
+MOVEMENTS_EXPORT_EMPTY = "لا توجد حركات للتصدير."
+MOVEMENTS_EMPTY = "لا توجد حركات مخزون في هذه الفترة."
+MOVEMENTS_LOAD_MORE = "عرض المزيد"
+
+# --- الميزة 3: ديون الزبائن
+NAV_CREANCES = "الديون"
+CREANCES_TITLE = "ديون الزبائن"
+CREANCES_SUMMARY = "{total} مستحقة · {count} مدينون"
+CREANCES_SEARCH = "ابحث عن زبون…"
+CREANCES_COL_CUSTOMER = "الزبون"
+CREANCES_COL_DATE = "تاريخ البيع"
+CREANCES_COL_TOTAL = "الإجمالي"
+CREANCES_COL_PAID = "المدفوع"
+CREANCES_COL_BALANCE = "المتبقي"
+CREANCES_COL_AGE = "قدم الدين"
+CREANCES_COL_ACTIONS = "إجراءات"
+CREANCES_ENCAISSER = "تحصيل"
+CREANCES_RECEIPT = "إيصال"
+CREANCES_AGE_DAYS = "{days} ي"
+CREANCES_EMPTY = "لا توجد ديون قائمة"
+CREANCES_EMPTY_HINT = "جميع المبيعات مسددة."
+CREANCES_VIEW_FLAT = "قائمة"
+CREANCES_VIEW_GROUPED = "حسب الزبون"
+CREANCES_GROUP_SUBTOTAL = "المجموع الفرعي: {total}"
+CREANCES_EXPORT_PDF = "تصدير PDF"
+CREANCES_PAYMENT_DONE = "تم تسجيل الدفع."
+
+# --- الميزة 4: إغلاق الصندوق
+CHECKOUT_CLOSE_DAY = "إغلاق الصندوق"
+CHECKOUT_CLOSE_DONE = "تم الإغلاق"
+CLOSING_TITLE = "إغلاق الصندوق"
+CLOSING_SECTION_SUMMARY = "ملخص تلقائي"
+CLOSING_SECTION_COUNT = "العد الفعلي"
+CLOSING_SECTION_ACTIONS = "إجراءات"
+CLOSING_SALES_COUNT = "مبيعات اليوم"
+CLOSING_REVENUE = "رقم المبيعات"
+CLOSING_CASH = "نقدا"
+CLOSING_CARD = "بطاقة"
+CLOSING_TRANSFER = "تحويل"
+CLOSING_DISCOUNTS = "الخصومات الممنوحة"
+CLOSING_REFUNDS = "المبالغ المرجعة"
+CLOSING_EXPECTED_CASH = "النقد المتوقع في الصندوق"
+CLOSING_PHYSICAL_LABEL = "النقد المحصى في الصندوق (دج)"
+CLOSING_GAP_LABEL = "فرق الصندوق:"
+CLOSING_GAP_POS = "+{amount}"
+CLOSING_GAP_NEG = "-{amount}"
+CLOSING_NOTE_LABEL = "ملاحظة عن الفرق (اختياري)"
+CLOSING_NOTE_PLACEHOLDER = "تفسير أي فرق محتمل…"
+CLOSING_PRINT = "طباعة تقرير الإغلاق"
+CLOSING_CONFIRM = "تأكيد الإغلاق"
+CLOSING_DONE_TOAST = "تم تسجيل إغلاق الصندوق."
+CLOSING_NO_SALES = "لا توجد مبيعات اليوم — لا شيء لإغلاقه."
+CLOSING_PIN_PROMPT = "أدخل الرمز السري لإغلاق الصندوق."
+
+# --- الميزة 5: التقرير اليومي
+STATS_DAILY_REPORT = "التقرير اليومي"
+STATS_DAILY_REPORT_TITLE = "التقرير اليومي"
+STATS_DAILY_REPORT_PROMPT = "اختر تاريخ التقرير:"
+STATS_DAILY_REPORT_GENERATE = "إنشاء التقرير"
+
+# --- الميزة 6: لوحة التحكم
+NAV_DASHBOARD = "لوحة التحكم"
+DASHBOARD_TITLE = "لوحة التحكم"
+DASH_TODAY_REVENUE = "رقم مبيعات اليوم"
+DASH_TODAY_SALES = "مبيعات اليوم"
+DASH_LOW_STOCK = "تنبيهات المخزون المنخفض"
+DASH_OUTSTANDING = "الديون القائمة"
+DASH_TREND_TITLE = "تطور آخر 7 أيام"
+DASH_TOP_PRODUCTS = "أفضل 5 منتجات"
+DASH_TOP_EMPTY = "لا مبيعات هذا الشهر"
+DASH_FINANCIAL = "الوضع المالي"
+DASH_CUSTOMER_CREDIT = "ديون الزبائن"
+DASH_SUPPLIER_DEBT = "ديون الموردين"
+DASH_RECENT_ACTIVITY = "النشاط الأخير"
+DASH_NO_ACTIVITY = "لا مبيعات حديثة"
+DASH_ANONYMOUS = "مجهول"
+
+# --- عام: ملف مُصدَّر
+EXPORT_SAVED_TOAST = "تم حفظ الملف: {path}"
+OPEN_PDF_FAILED = "تعذّر فتح ملف PDF: {path}"
+
+# ======================================================================
+# المرحلة 17 — المستخدمون متعددو الأدوار والمصادقة بالجلسة.
+# ======================================================================
+
+ROLE_LABELS = {
+    "cashier": "أمين صندوق",
+    "manager": "مدير",
+    "owner": "المالك",
+}
+LOGIN_GREETING = "مرحبًا، {name}"
+
+# --- الإعدادات: التبويبات
+SETTINGS_TAB_GENERAL = "عام"
+SETTINGS_TAB_USERS = "المستخدمون"
+
+# --- إدارة المستخدمين
+USER_NEW = "مستخدم جديد"
+USER_EDIT = "تعديل"
+USER_DEACTIVATE = "تعطيل"
+USER_DIALOG_NEW = "مستخدم جديد"
+USER_DIALOG_EDIT = "تعديل المستخدم"
+USER_NAME = "الاسم"
+USER_ROLE = "الدور"
+USER_PIN = "الرمز السري"
+USER_PIN_EDIT_HINT = "الرمز السري (اتركه فارغًا لعدم التغيير)"
+USER_PIN_PLACEHOLDER = "••••"
+USER_PIN_TOO_SHORT = "يجب أن يتكوّن الرمز السري من 4 أرقام على الأقل."
+USER_ACTIVE = "نشط"
+USER_COL_NAME = "الاسم"
+USER_COL_ROLE = "الدور"
+USER_COL_STATUS = "الحالة"
+USER_STATUS_ACTIVE = "نشط"
+USER_STATUS_INACTIVE = "غير نشط"
+USER_EMPTY = "لا يوجد مستخدمون"
+USER_SAVED_TOAST = "تم حفظ المستخدم."
+USER_DEACTIVATED_TOAST = "تم تعطيل المستخدم."
+USER_DEACTIVATE_CONFIRM = "تعطيل المستخدم « {name} »؟"
+
+# ======================================================================
+# المرحلة 18 — العروض والتخفيضات.
+# ======================================================================
+
+# --- الكاشير: رمز العرض
+CHECKOUT_PROMO_LABEL = "رمز العرض:"
+CHECKOUT_PROMO_PLACEHOLDER = "الرمز…"
+CHECKOUT_PROMO_APPLY = "تطبيق"
+CHECKOUT_PROMO_REMOVE = "إزالة رمز العرض"
+CHECKOUT_PROMO_APPLIED = "الرمز {code}: -{discount}"
+CHECKOUT_PROMO_EMPTY_CART = "أضف أصنافًا إلى السلة أولاً."
+
+# --- الإعدادات: تبويب العروض
+SETTINGS_TAB_PROMOTIONS = "العروض"
+
+PROMO_TYPE_LABELS = {
+    "percent": "نسبة مئوية",
+    "fixed": "مبلغ ثابت",
+}
+PROMO_NEW = "عرض جديد"
+PROMO_DEACTIVATE = "تعطيل"
+PROMO_DIALOG_NEW = "عرض جديد"
+PROMO_CODE = "الرمز"
+PROMO_CODE_PLACEHOLDER = "PROMO10"
+PROMO_TYPE = "النوع"
+PROMO_VALUE = "القيمة"
+PROMO_VALUE_REQUIRED = "يجب أن تكون القيمة أكبر من الصفر."
+PROMO_VALID_FROM = "صالح من"
+PROMO_VALID_TO = "إلى"
+PROMO_MAX_USES = "أقصى عدد استخدامات (0 = غير محدود)"
+PROMO_UNLIMITED = "غير محدود"
+PROMO_DATE_ORDER = "يجب أن يسبق تاريخ البداية تاريخ النهاية."
+PROMO_COL_CODE = "الرمز"
+PROMO_COL_TYPE = "النوع"
+PROMO_COL_VALUE = "القيمة"
+PROMO_COL_VALIDITY = "الصلاحية"
+PROMO_COL_USES = "الاستخدامات"
+PROMO_COL_STATUS = "الحالة"
+PROMO_VALIDITY_RANGE = "من {start} إلى {end}"
+PROMO_ACTIVE = "نشط"
+PROMO_INACTIVE = "غير نشط"
+PROMO_EMPTY = "لا توجد عروض"
+PROMO_SAVED_TOAST = "تم إنشاء العرض."
+PROMO_DEACTIVATED_TOAST = "تم تعطيل العرض."
+PROMO_DEACTIVATE_CONFIRM = "تعطيل العرض « {code} »؟"
+
+# ======================================================================
+# المرحلة 19 — الحجوزات (وضع جانبًا).
+# ======================================================================
+
+NAV_RESERVATIONS = "الحجوزات"
+RESERVATIONS_TITLE = "الحجوزات"
+RESERVATIONS_EMPTY = "لا توجد حجوزات"
+RESERVATION_NEW = "حجز جديد"
+RESERVATION_NEW_TITLE = "حجز جديد"
+RESERVATION_CREATE = "إنشاء الحجز"
+RESERVATION_CUSTOMER = "الزبون"
+RESERVATION_NO_CUSTOMER = "لم يتم اختيار زبون"
+RESERVATION_CUSTOMER_REQUIRED = "اختر زبونًا."
+RESERVATION_ITEMS = "الأصناف"
+RESERVATION_ADD_PRODUCT = "إضافة منتج…"
+RESERVATION_ITEMS_REQUIRED = "أضف صنفًا واحدًا على الأقل."
+RESERVATION_AVAILABLE = "متاح: {n}"
+RESERVATION_DEPOSIT = "العربون (دج)"
+RESERVATION_EXPIRES = "ينتهي في"
+RESERVATION_NOTES = "ملاحظات"
+RESERVATION_COL_CUSTOMER = "الزبون"
+RESERVATION_COL_ITEMS = "الأصناف"
+RESERVATION_COL_TOTAL = "الإجمالي"
+RESERVATION_COL_DEPOSIT = "العربون"
+RESERVATION_COL_EXPIRES = "ينتهي في"
+RESERVATION_COL_STATUS = "الحالة"
+RESERVATION_COL_ACTIONS = "إجراءات"
+RESERVATION_ITEMS_COUNT = "{n} صنف"
+RESERVATION_FINALIZE = "إتمام"
+RESERVATION_CANCEL = "إلغاء"
+RESERVATION_CANCEL_CONFIRM = "إلغاء حجز {name}؟ سيُعاد المخزون."
+RESERVATION_STATUS_LABELS = {
+    "active": "نشط",
+    "completed": "مكتمل",
+    "cancelled": "ملغى",
+}
+RESERVATION_EXPIRED = "منتهٍ"
+RESERVATION_FILTER_ACTIVE = "النشطة"
+RESERVATION_FILTER_COMPLETED = "المكتملة"
+RESERVATION_FILTER_CANCELLED = "الملغاة"
+RESERVATION_FILTER_ALL = "الكل"
+RESERVATION_CREATED_TOAST = "تم إنشاء الحجز."
+RESERVATION_FINALIZED_TOAST = "تم تحويل الحجز إلى بيع."
+RESERVATION_CANCELLED_TOAST = "تم إلغاء الحجز."
+
+# ======================================================================
+# المرحلة 20 — طباعة ملصقات الباركود.
+# ======================================================================
+
+NAV_LABELS = "الملصقات"
+INVENTORY_LABELS_BUTTON = "طباعة الملصقات"
+LABELS_TITLE = "طباعة الملصقات"
+LABELS_SELECT_PRODUCTS = "المنتجات"
+LABELS_SELECT_ALL = "تحديد الكل"
+LABELS_SELECT_NONE = "إلغاء تحديد الكل"
+LABELS_SELECTED_COUNT = "{n} محدد"
+LABELS_PRODUCT_ROW = "{name}  ·  المخزون: {stock}"
+LABELS_CONFIG = "الإعدادات"
+LABELS_SIZE = "حجم الملصق"
+LABELS_COPIES = "نسخ لكل منتج"
+LABELS_SHOW_NAME = "إظهار الاسم"
+LABELS_SHOW_PRICE = "إظهار السعر"
+LABELS_SHOW_BARCODE = "إظهار الباركود"
+LABELS_SHOW_STORE = "إظهار اسم المتجر"
+LABELS_PRICE_LEVEL = "مستوى السعر"
+LABELS_BARCODE_TYPE = "نوع الباركود"
+LABELS_PREVIEW = "معاينة"
+LABELS_PRINT = "طباعة"
+LABELS_EXPORT = "تصدير PDF"
+LABELS_NONE_SELECTED = "اختر منتجًا واحدًا على الأقل."
+LABELS_GENERATING = "جارٍ إنشاء الملصقات…"
+LABELS_SENT_TO_PRINTER = "تم إرسال الملصقات إلى الطابعة."
+
+# ======================================================================
+# المرحلة 21 — مقارنة الفترات (الإحصائيات).
+# ======================================================================
+
+STATS_TAB_DASHBOARD = "لوحة المعلومات"
+STATS_TAB_COMPARISON = "مقارنة الفترات"
+CMP_PERIOD_A = "الفترة أ"
+CMP_PERIOD_B = "الفترة ب"
+CMP_PRESET_MONTH = "الشهر مقابل السابق"
+CMP_PRESET_QUARTER = "الفصل مقابل السابق"
+CMP_PRESET_YEAR = "السنة مقابل السابقة"
+CMP_COMPARE = "قارن"
+CMP_TABLE_TITLE = "المقارنة"
+CMP_CHART_TITLE = "رقم المبيعات حسب اليوم"
+CMP_COL_METRIC = "المقياس"
+CMP_COL_CHANGE = "التغير"
+CMP_METRIC_REVENUE = "رقم المبيعات"
+CMP_METRIC_PROFIT = "الربح"
+CMP_METRIC_SALES = "عدد المبيعات"
+CMP_METRIC_BASKET = "متوسط السلة"
+CMP_METRIC_CUSTOMERS = "الزبائن"
+CMP_METRIC_TOP_CATEGORY = "مبيعات أفضل فئة"

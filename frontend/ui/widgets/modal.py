@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QDialogButtonBox,
+    QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -30,26 +31,45 @@ class ModalDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
-        self.setMinimumWidth(440)
-        # Paint the dialog's own background from the stylesheet ($surface)
+        self.setMinimumWidth(460)
+        # Paint the dialog's own background from the stylesheet ($background)
         # rather than the (possibly dark) OS palette — see main._apply_theme,
         # which also installs a full theme-derived QPalette as a backstop.
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(
-            SPACING["xl"], SPACING["xl"], SPACING["xl"], SPACING["lg"]
-        )
-        outer.setSpacing(SPACING["md"])
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
+        # Dark header band — mirrors the sidebar so the dialog reads as part of
+        # the app, not a stark white box. Holds the dialog title in light text.
+        header = QWidget()
+        header.setObjectName("DialogHeader")
+        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(
+            SPACING["xl"], SPACING["lg"], SPACING["xl"], SPACING["lg"]
+        )
         heading = QLabel(title)
-        heading.setObjectName("ScreenTitle")
-        outer.addWidget(heading)
+        heading.setObjectName("DialogTitle")
+        header_layout.addWidget(heading)
+        header_layout.addStretch(1)
+        outer.addWidget(header)
+
+        # Body: the scrollable content area on a soft surface.
+        body = QWidget()
+        body.setObjectName("DialogBody")
+        body.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(
+            SPACING["xl"], SPACING["lg"], SPACING["xl"], SPACING["lg"]
+        )
+        body_layout.setSpacing(SPACING["md"])
 
         holder = QWidget()
         holder.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.content = QVBoxLayout(holder)
-        self.content.setContentsMargins(0, 0, SPACING["xs"], 0)
+        self.content.setContentsMargins(0, 0, 0, 0)
         self.content.setSpacing(SPACING["md"])
 
         self._scroll = QScrollArea()
@@ -62,7 +82,7 @@ class ModalDialog(QDialog):
         self._scroll.viewport().setAttribute(
             Qt.WidgetAttribute.WA_StyledBackground, True
         )
-        outer.addWidget(self._scroll, stretch=1)
+        body_layout.addWidget(self._scroll, stretch=1)
 
         self.buttons = QDialogButtonBox()
         self.ok_button = QPushButton(strings.SAVE)
@@ -72,9 +92,8 @@ class ModalDialog(QDialog):
         self.buttons.addButton(
             self.cancel_button, QDialogButtonBox.ButtonRole.RejectRole
         )
-        self.buttons.accepted.connect(self.accept)
-        self.buttons.rejected.connect(self.reject)
-        outer.addWidget(self.buttons)
+        body_layout.addWidget(self.buttons)
+        outer.addWidget(body)
 
     def showEvent(self, event) -> None:
         """Clamp to the ACTUAL screen so every display size works."""

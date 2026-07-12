@@ -45,6 +45,21 @@ _RECEIPT_I18N: dict[str, dict[str, str]] = {
         "vente_n": "Vente N°",
         "avoir_n": "Avoir N°",
         "total_avoir": "TOTAL AVOIR",
+        "closing_title": "CLÔTURE DE CAISSE",
+        "closing_recap": "Récapitulatif",
+        "closing_sales_count": "Ventes",
+        "closing_revenue": "Chiffre d'affaires",
+        "closing_cash": "Espèces",
+        "closing_card": "Carte",
+        "closing_transfer": "Virement",
+        "closing_other": "Autre",
+        "closing_discounts": "Remises",
+        "closing_refunds": "Remboursements",
+        "closing_expected": "Espèces attendues",
+        "closing_counted": "Espèces comptées",
+        "closing_gap": "Écart de caisse",
+        "closing_note": "Note :",
+        "closing_signature": "Signature du caissier",
     },
     "ar": {
         "tel": "هاتف:",
@@ -59,6 +74,21 @@ _RECEIPT_I18N: dict[str, dict[str, str]] = {
         "vente_n": "بيع رقم",
         "avoir_n": "إشعار رقم",
         "total_avoir": "مجموع الإشعار",
+        "closing_title": "إغلاق الصندوق",
+        "closing_recap": "الملخص",
+        "closing_sales_count": "المبيعات",
+        "closing_revenue": "رقم المبيعات",
+        "closing_cash": "نقدا",
+        "closing_card": "بطاقة",
+        "closing_transfer": "تحويل",
+        "closing_other": "أخرى",
+        "closing_discounts": "الخصومات",
+        "closing_refunds": "المبالغ المرجعة",
+        "closing_expected": "النقد المتوقع",
+        "closing_counted": "النقد المحصى",
+        "closing_gap": "فرق الصندوق",
+        "closing_note": "ملاحظة:",
+        "closing_signature": "توقيع الصندوق",
     },
 }
 
@@ -360,6 +390,121 @@ def build_refund_receipt_pdf(
     if refund.reason:
         y -= _LINE / 2
         line(f"{i18n['reason']} {refund.reason}", size=8)
+
+    pdf.showPage()
+    pdf.save()
+    return buffer.getvalue()
+
+
+def build_closing_pdf(
+    summary,
+    physical_cash: Decimal,
+    gap: Decimal,
+    store: Store,
+    settings: StoreSettings | None,
+    day,
+    notes: str | None = None,
+) -> bytes:
+    """Render the daily cash-register closing (clôture) — 80mm thermal style.
+
+    `summary` is a DaySummary; `physical_cash` and `gap` (signed) are the
+    reconciliation the operator entered. Prints the store name/date, every
+    Section-A figure, the physical count, the computed gap and a cashier
+    signature line.
+    """
+    shop_name = (settings.shop_name if settings else None) or store.name
+
+    is_arabic = bool(settings and settings.ui_language == "ar")
+    lang = (settings.ui_language if settings else None) or "fr"
+    i18n = _RECEIPT_I18N.get(lang, _RECEIPT_I18N["fr"])
+    default_font = "Amiri" if is_arabic else "Helvetica"
+    bold_font = "Amiri" if is_arabic else "Helvetica-Bold"
+
+    # Generous fixed height (a thermal roll tolerates trailing whitespace).
+    note_lines = 2 if notes else 0
+    height = (26 + note_lines) * _LINE + 2 * _MARGIN
+
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=(_WIDTH, height))
+    y = height - _MARGIN
+
+    def line(text: str, font: str = default_font, size: int = 9, center: bool = False):
+        nonlocal y
+        if font == "Helvetica" and is_arabic:
+            font = default_font
+        if font == "Helvetica-Bold" and is_arabic:
+            font = bold_font
+        pdf.setFont(font, size)
+        safe_txt = _safe(text, is_arabic)
+        if center:
+            pdf.drawCentredString(_WIDTH / 2, y, safe_txt)
+        elif is_arabic:
+            pdf.drawRightString(_WIDTH - _MARGIN, y, safe_txt)
+        else:
+            pdf.drawString(_MARGIN, y, safe_txt)
+        y -= _LINE
+
+    def line_right(left: str, right: str, font: str = default_font, size: int = 9):
+        nonlocal y
+        if font == "Helvetica" and is_arabic:
+            font = default_font
+        if font == "Helvetica-Bold" and is_arabic:
+            font = bold_font
+        pdf.setFont(font, size)
+        safe_left = _safe(left, is_arabic)
+        safe_right = _safe(right, is_arabic)
+        if is_arabic:
+            pdf.drawString(_MARGIN, y, safe_right)
+            pdf.drawRightString(_WIDTH - _MARGIN, y, safe_left)
+        else:
+            pdf.drawString(_MARGIN, y, safe_left)
+            pdf.drawRightString(_WIDTH - _MARGIN, y, safe_right)
+        y -= _LINE
+
+    line(i18n["closing_title"], font="Helvetica-Bold", size=13, center=True)
+    line(shop_name, font="Helvetica-Bold", size=11, center=True)
+    if settings and settings.phone:
+        line(f"{i18n['tel']} {settings.phone}", size=8, center=True)
+    if settings and settings.address:
+        line(settings.address, size=8, center=True)
+    day_str = day.strftime("%d/%m/%Y") if hasattr(day, "strftime") else str(day)
+    line(i18n["date_line"].format(date=day_str), size=8, center=True)
+    line("-" * 42)
+
+    line(i18n["closing_recap"], font="Helvetica-Bold", size=10)
+    line_right(i18n["closing_sales_count"], str(summary.sales_count))
+    line_right(i18n["closing_revenue"], _fmt_money(summary.total_revenue, is_arabic))
+    line_right(i18n["closing_cash"], _fmt_money(summary.cash_total, is_arabic))
+    if summary.card_total > 0:
+        line_right(i18n["closing_card"], _fmt_money(summary.card_total, is_arabic))
+    if summary.transfer_total > 0:
+        line_right(
+            i18n["closing_transfer"], _fmt_money(summary.transfer_total, is_arabic)
+        )
+    if summary.other_total > 0:
+        line_right(i18n["closing_other"], _fmt_money(summary.other_total, is_arabic))
+    line_right(
+        i18n["closing_discounts"], _fmt_money(summary.total_discounts, is_arabic)
+    )
+    line_right(i18n["closing_refunds"], _fmt_money(summary.total_refunds, is_arabic))
+    line("-" * 42)
+
+    line_right(i18n["closing_expected"], _fmt_money(summary.expected_cash, is_arabic))
+    line_right(i18n["closing_counted"], _fmt_money(physical_cash, is_arabic))
+    # Signed gap: keep the leading sign so a shortfall is unmistakable.
+    gap_text = _fmt_money(abs(gap), is_arabic)
+    if gap > 0:
+        gap_text = f"+{gap_text}"
+    elif gap < 0:
+        gap_text = f"-{gap_text}"
+    line_right(i18n["closing_gap"], gap_text, font="Helvetica-Bold", size=11)
+
+    if notes:
+        y -= _LINE / 2
+        line(f"{i18n['closing_note']} {notes}", size=8)
+
+    y -= _LINE
+    line(f"{i18n['closing_signature']} : ______________________", size=9)
 
     pdf.showPage()
     pdf.save()

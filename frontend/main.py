@@ -227,10 +227,12 @@ def main() -> int:
             wizard = OnboardingWizard(api)
             if not wizard.exec():
                 return 0
-        else:
-            login = LoginDialog(api)
-            if not login.exec():
-                return 0
+        # Always show the login gate (multi-user): the operator picks their
+        # name and PIN and receives a session token. On a just-configured
+        # install the owner is materialized from the PIN and is pickable.
+        login = LoginDialog(api)
+        if not login.exec():
+            return 0
 
     logger.info(
         "UI started | store_id={} rtl={}",

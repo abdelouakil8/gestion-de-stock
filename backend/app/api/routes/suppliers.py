@@ -2,7 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query
 
-from app.api.deps import DbDep, OwnerPinDep
+from app.api.deps import DbDep, ManagerDep
 from app.core.exceptions import NotFoundError
 from app.schemas.supplier import (
     SupplierCreate,
@@ -30,17 +30,17 @@ def get_supplier(supplier_id: UUID, db: DbDep):
 
 
 @router.post(
-    "", response_model=SupplierRead, status_code=201, dependencies=[OwnerPinDep]
+    "", response_model=SupplierRead, status_code=201, dependencies=[ManagerDep]
 )
 def create_supplier(payload: SupplierCreate, db: DbDep):
     return suppliers.create_supplier(db, payload)
 
 
-@router.patch("/{supplier_id}", response_model=SupplierRead, dependencies=[OwnerPinDep])
+@router.patch("/{supplier_id}", response_model=SupplierRead, dependencies=[ManagerDep])
 def update_supplier(supplier_id: UUID, payload: SupplierUpdate, db: DbDep):
     return suppliers.update_supplier(db, supplier_id, payload)
 
 
-@router.delete("/{supplier_id}", status_code=204, dependencies=[OwnerPinDep])
+@router.delete("/{supplier_id}", status_code=204, dependencies=[ManagerDep])
 def delete_supplier(supplier_id: UUID, db: DbDep):
     suppliers.delete_supplier(db, supplier_id)

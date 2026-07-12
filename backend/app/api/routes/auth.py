@@ -1,8 +1,14 @@
-from fastapi import APIRouter, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app.api.deps import DbDep
+from app.core import sessions
 from app.core.config import RUNTIME_DIR, settings
 from app.core.security import hash_pin, verify_pin
+from app.schemas.user import LoginRequest, LoginResponse, LoginUser
+from app.services import users as users_service
 
 router = APIRouter()
 
@@ -45,6 +51,39 @@ def verify(payload: PinVerifyRequest) -> PinVerifyResponse:
 def get_status() -> dict:
     """Check if the PIN is configured, without triggering auth failures."""
     return {"configured": settings.pin_hash is not None}
+
+
+@router.get("/users", response_model=list[LoginUser])
+def login_users(db: DbDep) -> list:
+    """Public list of selectable users for the login screen (no PIN hashes).
+
+    Lazily migrates the legacy single owner PIN into an owner User so an
+    upgraded install always has at least the owner to pick."""
+    return users_service.login_users(db)
+
+
+@router.post("/login", response_model=LoginResponse)
+def login(payload: LoginRequest, db: DbDep) -> LoginResponse:
+    """Authenticate a user by PIN and issue a session token."""
+    user = users_service.authenticate(db, payload.user_id, payload.pin)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "invalid_pin", "message": "Code PIN incorrect."},
+        )
+    session = sessions.create(user)
+    return LoginResponse(
+        token=session.token,
+        user=LoginUser(id=user.id, name=user.name, role=user.role),
+    )
+
+
+@router.post("/logout", status_code=204)
+def logout(
+    x_session_token: Annotated[str | None, Header(alias="X-Session-Token")] = None,
+) -> None:
+    """Revoke the current session token (best-effort)."""
+    sessions.revoke(x_session_token)
 
 
 @router.post("/set-pin", response_model=PinVerifyResponse)

@@ -46,6 +46,8 @@ _STATUS_BY_CODE = {
     RefundExceedsQuantityError.code: status.HTTP_409_CONFLICT,
     RefundExceedsPaidAmountError.code: status.HTTP_409_CONFLICT,
     BackupInvalidError.code: status.HTTP_422_UNPROCESSABLE_CONTENT,
+    # Multi-user auth: unknown user -> 404 (last-owner guard defaults to 409).
+    "user_not_found": status.HTTP_404_NOT_FOUND,
     # Business-rule rejections (price floor, stock, unavailable product,
     # credit without customer, overpayment, duplicate phone…) default to
     # 409 Conflict below.

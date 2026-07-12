@@ -2,7 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query
 
-from app.api.deps import DbDep, OwnerPinDep
+from app.api.deps import DbDep, ManagerDep
 from app.core.exceptions import NotFoundError
 from app.schemas.customer import CustomerCreate, CustomerRead, CustomerUpdate
 from app.services import customers
@@ -42,7 +42,7 @@ def update_customer(customer_id: UUID, payload: CustomerUpdate, db: DbDep):
     return customer
 
 
-@router.delete("/{customer_id}", status_code=204, dependencies=[OwnerPinDep])
+@router.delete("/{customer_id}", status_code=204, dependencies=[ManagerDep])
 def archive_customer(customer_id: UUID, db: DbDep) -> None:
     if customers.soft_delete_customer(db, customer_id) is None:
         raise NotFoundError("client", customer_id)

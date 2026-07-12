@@ -47,6 +47,8 @@ from ui.widgets.bars import BarChart
 from ui.widgets.data_table import DataTable
 from ui.widgets.modal import ModalDialog, ask_confirm, show_error
 from ui.widgets.states import EmptyState, StatefulStack
+from ui.widgets.stock_adjust_dialog import StockAdjustDialog
+from ui.widgets.stock_movements_view import StockMovementsView
 from ui.widgets.thumb import Thumb
 from ui.widgets.toast import show_toast
 
@@ -872,6 +874,18 @@ class InventoryScreen(QWidget):
             qta.icon("fa5s.arrow-down", color=NEUTRAL["600"]), "Réceptionner"
         )
         self.receive_button.clicked.connect(self._receive_stock)
+        # Manual stock adjustment (owner, PIN-gated) — the product is chosen
+        # inside the dialog, so this action never depends on a table selection.
+        self.adjust_button = QPushButton(
+            qta.icon("fa5s.clipboard-check", color=NEUTRAL["600"]),
+            strings.INVENTORY_ADJUST_BUTTON,
+        )
+        self.adjust_button.clicked.connect(self._adjust_stock)
+        self.labels_button = QPushButton(
+            qta.icon("fa5s.tag", color=NEUTRAL["600"]),
+            strings.INVENTORY_LABELS_BUTTON,
+        )
+        self.labels_button.clicked.connect(self._open_label_printing)
 
         # Error prevention: row-dependent actions stay disabled until a row
         # is selected instead of scolding with a dialog after the click.
@@ -881,12 +895,13 @@ class InventoryScreen(QWidget):
         for button in (
             new_button,
             import_button,
+            self.adjust_button,
+            self.labels_button,
             self.receive_button,
             self.edit_button,
             self.archive_button,
         ):
             toolbar.addWidget(button)
-        layout.addLayout(toolbar)
 
         # Debounced server-side smart search (accent/Arabic/typo tolerant).
         self._search_debounce = QTimer(self)
@@ -939,9 +954,29 @@ class InventoryScreen(QWidget):
         self.stack.addWidget(self.table)
         self.stack.addWidget(self.empty)
         body.addWidget(self.stack, stretch=1)
-        layout.addLayout(body, stretch=1)
+
+        # Wrap the toolbar + products body in a "Produits" tab, and add a
+        # second "Mouvements de stock" tab (lazy-loaded on first view).
+        products_page = QWidget()
+        products_layout = QVBoxLayout(products_page)
+        products_layout.setContentsMargins(0, 0, 0, 0)
+        products_layout.setSpacing(SPACING["md"])
+        products_layout.addLayout(toolbar)
+        products_layout.addLayout(body, stretch=1)
+
+        self.movements_view = StockMovementsView(self.api, self.store_id)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(products_page, strings.INVENTORY_TAB_PRODUCTS)
+        self.tabs.addTab(self.movements_view, strings.INVENTORY_TAB_MOVEMENTS)
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+        layout.addWidget(self.tabs, stretch=1)
 
         self.refresh()
+
+    def _on_tab_changed(self, index: int) -> None:
+        # Lazy-load the movements ledger the first time its tab is shown.
+        if index == 1 and not self.movements_view._loaded_once:  # noqa: SLF001
+            self.movements_view.refresh()
 
     # ------------------------------------------------------------- loading
 
@@ -1161,6 +1196,30 @@ class InventoryScreen(QWidget):
             lambda: self.api.archive_product(product["id"]),
             lambda _: self.refresh(),
             lambda err: show_error(self, err.message),
+        )
+
+    def _open_label_printing(self) -> None:
+        window = self.window()
+        target = getattr(window, "label_printing", None)
+        if target is not None and hasattr(window, "navigate"):
+            window.navigate(target)
+
+    def _adjust_stock(self) -> None:
+        dialog = StockAdjustDialog(self.api, self.store_id, parent=self)
+        if not dialog.exec() or not dialog.result:
+            return
+        result = dialog.result
+        self.refresh()  # product stock changed
+        # Keep the movements ledger in sync if the operator has opened it.
+        if self.movements_view._loaded_once:  # noqa: SLF001
+            self.movements_view.refresh()
+        show_toast(
+            self,
+            strings.ADJUST_DONE_TOAST.format(
+                product=result["name"],
+                old=result["old_quantity"],
+                new=result["new_quantity"],
+            ),
         )
 
     def _receive_stock(self) -> None:

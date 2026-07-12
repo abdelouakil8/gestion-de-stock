@@ -29,14 +29,25 @@ class ApiClient:
         self._client = httpx.Client(
             base_url=f"http://{host}:{port}/api/v1", timeout=10.0
         )
-        self.pin: str | None = None  # set after the PIN gate; owner actions
+        self.pin: str | None = None  # legacy owner PIN (re-confirm dialogs)
+        # Multi-user auth: the session token issued at login is attached to
+        # every request; current_user carries {id, name, role}.
+        self.session_token: str | None = None
+        self.current_user: dict | None = None
 
     # ------------------------------------------------------------ plumbing
 
     def _headers(self, owner: bool = False) -> dict[str, str]:
+        headers: dict[str, str] = {}
+        # The session token authenticates EVERY request once a user is logged
+        # in (cashier routes included), so it is not gated on `owner`.
+        if self.session_token:
+            headers["X-Session-Token"] = self.session_token
+        # Legacy owner-PIN bridge, still used by the destructive re-confirm
+        # dialogs (factory reset, restore, adjustment, clôture).
         if owner and self.pin:
-            return {"X-Owner-Pin": self.pin}
-        return {}
+            headers["X-Owner-Pin"] = self.pin
+        return headers
 
     def _request(
         self,
@@ -84,6 +95,102 @@ class ApiClient:
 
     def set_initial_pin(self, pin: str) -> dict:
         return self._request("POST", "/auth/set-pin", json={"pin": pin})
+
+    def list_login_users(self) -> list[dict]:
+        """Public list of users for the login picker (id, name, role)."""
+        return self._request("GET", "/auth/users")
+
+    def login(self, user_id: str, pin: str) -> dict:
+        """Authenticate a user; on success store the session token + user."""
+        data = self._request(
+            "POST", "/auth/login", json={"user_id": user_id, "pin": pin}
+        )
+        self.session_token = data.get("token")
+        self.current_user = data.get("user")
+        return data
+
+    def logout(self) -> None:
+        """Revoke the session (best-effort) and forget the local credentials."""
+        if self.session_token:
+            try:
+                self._request("POST", "/auth/logout")
+            except ApiError:
+                pass
+        self.session_token = None
+        self.current_user = None
+
+    @property
+    def role(self) -> str | None:
+        return self.current_user.get("role") if self.current_user else None
+
+    # ---------------------------------------------------------------- users
+
+    def list_users(self, store_id: str) -> list[dict]:
+        return self._request("GET", "/users", owner=True, params={"store_id": store_id})
+
+    def create_user(self, payload: dict) -> dict:
+        return self._request("POST", "/users", owner=True, json=payload)
+
+    def update_user(self, user_id: str, payload: dict) -> dict:
+        return self._request("PATCH", f"/users/{user_id}", owner=True, json=payload)
+
+    def deactivate_user(self, user_id: str) -> None:
+        return self._request("DELETE", f"/users/{user_id}", owner=True)
+
+    # ----------------------------------------------------------- promotions
+
+    def list_promotions(self, store_id: str, active_only: bool = False) -> list[dict]:
+        return self._request(
+            "GET",
+            "/promotions",
+            owner=True,
+            params={"store_id": store_id, "active_only": active_only},
+        )
+
+    def create_promotion(self, payload: dict) -> dict:
+        return self._request("POST", "/promotions", owner=True, json=payload)
+
+    def validate_promotion(self, store_id: str, code: str, subtotal: str) -> dict:
+        """Preview a promo code's discount at the caisse (does not consume it)."""
+        return self._request(
+            "POST",
+            "/promotions/validate",
+            json={"store_id": store_id, "code": code, "subtotal": subtotal},
+        )
+
+    def deactivate_promotion(self, promo_id: str) -> None:
+        return self._request("DELETE", f"/promotions/{promo_id}", owner=True)
+
+    # --------------------------------------------------------- reservations
+
+    def create_reservation(self, payload: dict) -> dict:
+        return self._request("POST", "/reservations", owner=True, json=payload)
+
+    def list_reservations(
+        self, store_id: str, status: str | None = None, customer_id: str | None = None
+    ) -> list[dict]:
+        params: dict = {"store_id": store_id}
+        if status:
+            params["status"] = status
+        if customer_id:
+            params["customer_id"] = customer_id
+        return self._request("GET", "/reservations", owner=True, params=params)
+
+    def get_reservation(self, reservation_id: str) -> dict:
+        return self._request("GET", f"/reservations/{reservation_id}", owner=True)
+
+    def complete_reservation(self, reservation_id: str, payment: dict) -> dict:
+        return self._request(
+            "POST",
+            f"/reservations/{reservation_id}/complete",
+            owner=True,
+            json={"payment": payment},
+        )
+
+    def cancel_reservation(self, reservation_id: str) -> dict:
+        return self._request(
+            "POST", f"/reservations/{reservation_id}/cancel", owner=True
+        )
 
     # --------------------------------------------------------------- stores
 
@@ -183,6 +290,64 @@ class ApiClient:
             params={"store_id": store_id, "limit": limit, "offset": offset},
         )
 
+    def adjust_stock(
+        self,
+        product_id: str,
+        new_quantity: int,
+        reason: str,
+        note: str | None,
+        pin: str,
+    ) -> dict:
+        """Owner action: set a product's counted real stock. The freshly typed
+        PIN is sent so the confirmation dialog cannot be bypassed."""
+        body: dict = {"new_quantity": new_quantity, "reason": reason}
+        if note:
+            body["note"] = note
+        return self._request(
+            "POST",
+            f"/products/{product_id}/adjust-stock",
+            extra_headers={"X-Owner-Pin": pin},
+            json=body,
+        )
+
+    def list_stock_movements(
+        self,
+        store_id: str,
+        *,
+        product_id: str | None = None,
+        category_id: str | None = None,
+        type: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict:
+        """Store-wide movement ledger (owner), product name joined in."""
+        params: dict = {"store_id": store_id, "limit": limit, "offset": offset}
+        if product_id:
+            params["product_id"] = product_id
+        if category_id:
+            params["category_id"] = category_id
+        if type:
+            params["type"] = type
+        if date_from:
+            params["date_from"] = date_from
+        if date_to:
+            params["date_to"] = date_to
+        return self._request("GET", "/products/movements", owner=True, params=params)
+
+    def generate_labels(
+        self, store_id: str, product_ids: list[str], label_config: dict
+    ) -> bytes:
+        """Barcode-label sheet PDF for the selected products (manager+)."""
+        return self._request(
+            "POST",
+            "/products/labels/generate",
+            owner=True,
+            params={"store_id": store_id},
+            json={"product_ids": product_ids, "label_config": label_config},
+        )
+
     # -------------------------------------------------------------- customers
 
     def list_customers(
@@ -212,13 +377,20 @@ class ApiClient:
     # ---------------------------------------------------------------- sales
 
     def checkout(
-        self, store_id: str, items: list[dict], payment: dict | None = None
+        self,
+        store_id: str,
+        items: list[dict],
+        payment: dict | None = None,
+        promo_code: str | None = None,
     ) -> dict:
-        """items: [{product_id, quantity, price_level}] — never prices.
-        payment: {mode: full|partial, amount_paid?, customer_id?}."""
+        """items: [{product_id, quantity, price_level, discount_percent?}] —
+        never prices. payment: {mode: full|partial, amount_paid?, customer_id?}.
+        promo_code: optional coupon validated + consumed server-side."""
         body: dict = {"store_id": store_id, "items": items}
         if payment is not None:
             body["payment"] = payment
+        if promo_code:
+            body["promo_code"] = promo_code
         return self._request("POST", "/sales/checkout", json=body)
 
     def list_sales(
@@ -226,18 +398,22 @@ class ApiClient:
         store_id: str,
         *,
         customer_id: str | None = None,
+        created_by_user_id: str | None = None,
         guest: str | None = None,
         date_from: str | None = None,
         date_to: str | None = None,
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict]:
-        """Store sales, newest first. Optional filters: customer_id, guest
+        """Store sales, newest first. Optional filters: customer_id,
+        created_by_user_id (the cashier who rang it), guest
         ('pending'|'confirmed'|'any'), date_from/date_to (ISO datetimes,
         half-open [from, to)), limit (no cap when omitted), offset."""
         params: dict = {"store_id": store_id}
         if customer_id is not None:
             params["customer_id"] = customer_id
+        if created_by_user_id is not None:
+            params["created_by_user_id"] = created_by_user_id
         if guest is not None:
             params["guest"] = guest
         if date_from is not None:
@@ -276,6 +452,65 @@ class ApiClient:
     def get_receipt_pdf(self, sale_id: str) -> bytes:
         return self._request("GET", f"/sales/{sale_id}/receipt")
 
+    # --------------------------------------------------- outstanding credits
+
+    def list_outstanding_sales(self, store_id: str) -> list[dict]:
+        """Every credit sale with money still owed, oldest debt first (owner)."""
+        return self._request(
+            "GET", "/sales/outstanding", owner=True, params={"store_id": store_id}
+        )
+
+    def get_outstanding_report_pdf(self, store_id: str) -> bytes:
+        """A4 debt-summary PDF for the Créances screen (owner)."""
+        return self._request(
+            "GET", "/sales/outstanding.pdf", owner=True, params={"store_id": store_id}
+        )
+
+    # ----------------------------------------------------- cash-register close
+
+    def get_day_summary(self, store_id: str, day: str) -> dict:
+        """Section-A recap for one calendar day + already-closed flag (owner)."""
+        return self._request(
+            "GET",
+            "/sales/day-summary",
+            owner=True,
+            params={"store_id": store_id, "day": day},
+        )
+
+    def close_day(
+        self,
+        store_id: str,
+        day: str,
+        physical_cash_count: str,
+        notes: str | None,
+        pin: str,
+    ) -> dict:
+        """Persist the daily closing. The freshly typed PIN is sent."""
+        return self._request(
+            "POST",
+            "/sales/close-day",
+            extra_headers={"X-Owner-Pin": pin},
+            json={
+                "store_id": store_id,
+                "date": day,
+                "physical_cash_count": physical_cash_count,
+                "notes": notes,
+            },
+        )
+
+    def get_closing_pdf(
+        self, store_id: str, day: str, physical_cash_count: str, notes: str | None
+    ) -> bytes:
+        """Printable clôture PDF for the given day + physical count (owner)."""
+        params: dict = {
+            "store_id": store_id,
+            "day": day,
+            "physical_cash_count": physical_cash_count,
+        }
+        if notes:
+            params["notes"] = notes
+        return self._request("GET", "/sales/close-day.pdf", owner=True, params=params)
+
     # ----------------------------------------------------------- statistics
 
     def get_report_pdf(self, store_id: str, date_from: str, date_to: str) -> bytes:
@@ -292,6 +527,32 @@ class ApiClient:
             "/statistics/report.xlsx",
             owner=True,
             params={"store_id": store_id, "date_from": date_from, "date_to": date_to},
+        )
+
+    def get_daily_report_pdf(self, store_id: str, date: str) -> bytes:
+        """End-of-day A4 report PDF for a single calendar day (owner)."""
+        return self._request(
+            "GET",
+            "/statistics/daily-report.pdf",
+            owner=True,
+            params={"store_id": store_id, "date": date},
+        )
+
+    def get_comparison_report_pdf(
+        self, store_id: str, a_from: str, a_to: str, b_from: str, b_to: str
+    ) -> bytes:
+        """Two-period comparison report PDF (owner)."""
+        return self._request(
+            "GET",
+            "/statistics/comparison-report.pdf",
+            owner=True,
+            params={
+                "store_id": store_id,
+                "a_from": a_from,
+                "a_to": a_to,
+                "b_from": b_from,
+                "b_to": b_to,
+            },
         )
 
     def stats_summary(self, store_id: str, date_from: str, date_to: str) -> dict:

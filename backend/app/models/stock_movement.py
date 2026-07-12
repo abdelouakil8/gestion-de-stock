@@ -11,7 +11,7 @@ import uuid
 from enum import StrEnum
 
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Integer, Text, Uuid
+from sqlalchemy import ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import BaseModel, StoreScopedMixin
@@ -36,6 +36,9 @@ class StockMovement(BaseModel, StoreScopedMixin):
     quantity_delta: Mapped[int] = mapped_column(Integer, nullable=False)
     quantity_after: Mapped[int] = mapped_column(Integer, nullable=False)
     reference_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    # Structured motive for manual adjustments (inventaire / perte / casse /
+    # correction / autre). NULL for automatic movements (sale/purchase/refund).
+    reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     def __repr__(self) -> str:

@@ -14,13 +14,16 @@ captured at login. Every section loads visibly and has a designed empty
 state; charts are hand-drawn (no chart library) and mirror cleanly in RTL.
 """
 
+import tempfile
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import qtawesome as qta
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QCalendarWidget,
     QDateEdit,
     QFileDialog,
     QFrame,
@@ -29,6 +32,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -41,7 +45,8 @@ from ui.widgets.badge import DeltaChip
 from ui.widgets.card import Card, SectionCard
 from ui.widgets.charts import ColumnChart, DonutChart, LineChart, LinePoint
 from ui.widgets.data_table import DataTable
-from ui.widgets.modal import show_error
+from ui.widgets.modal import ModalDialog, show_error
+from ui.widgets.period_comparison import PeriodComparisonTab
 from ui.widgets.states import EmptyState, StatefulStack
 from ui.widgets.thumb import Thumb
 
@@ -222,6 +227,25 @@ class RuleCard(QWidget):
         self.setToolTip(detail.text())
 
 
+class _DailyReportDatePicker(ModalDialog):
+    """A calendar picker for the end-of-day report (any past date)."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(strings.STATS_DAILY_REPORT_TITLE, parent)
+        self.selected: QDate | None = None
+        prompt = QLabel(strings.STATS_DAILY_REPORT_PROMPT)
+        self.content.addWidget(prompt)
+        self.calendar = QCalendarWidget()
+        self.calendar.setMaximumDate(QDate.currentDate())  # never a future day
+        self.calendar.setSelectedDate(QDate.currentDate())
+        self.content.addWidget(self.calendar)
+        self.ok_button.setText(strings.STATS_DAILY_REPORT_GENERATE)
+
+    def accept(self) -> None:
+        self.selected = self.calendar.selectedDate()
+        super().accept()
+
+
 class StatisticsScreen(QWidget):
     def __init__(self, api, store_id: str, parent=None) -> None:
         super().__init__(parent)
@@ -262,7 +286,24 @@ class StatisticsScreen(QWidget):
         layout.addStretch(1)
 
         scroll.setWidget(content)
-        outer.addWidget(scroll, stretch=1)
+
+        # Tabbed: the live dashboard + a period-comparison tab (lazy-loaded).
+        self.tabs = QTabWidget()
+        self.tabs.addTab(scroll, strings.STATS_TAB_DASHBOARD)
+        self.comparison_tab = PeriodComparisonTab(self.api, self.store_id)
+        self._comparison_loaded = False
+        self.tabs.addTab(self.comparison_tab, strings.STATS_TAB_COMPARISON)
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+        outer.addWidget(self.tabs, stretch=1)
+
+    def _on_tab_changed(self, index: int) -> None:
+        # First time the comparison tab is shown, run the default comparison.
+        if (
+            self.tabs.widget(index) is self.comparison_tab
+            and not self._comparison_loaded
+        ):
+            self._comparison_loaded = True
+            self.comparison_tab.refresh()
 
     # --------------------------------------------------------------- build
 
@@ -281,6 +322,14 @@ class StatisticsScreen(QWidget):
         title_box.addWidget(subtitle)
         row1.addLayout(title_box)
         row1.addStretch(1)
+
+        self.btn_daily_report = QPushButton(
+            qta.icon("fa5s.calendar-day", color=NEUTRAL["600"]),
+            strings.STATS_DAILY_REPORT,
+        )
+        self.btn_daily_report.setObjectName("Secondary")
+        self.btn_daily_report.clicked.connect(self._daily_report)
+        row1.addWidget(self.btn_daily_report)
 
         self.btn_export_pdf = QPushButton(strings.STATS_EXPORT_PDF)
         self.btn_export_pdf.setObjectName("Secondary")
@@ -702,6 +751,28 @@ class StatisticsScreen(QWidget):
                 f.write(data)
         except OSError as e:
             show_error(self, strings.ERROR_TITLE, f"Erreur d'écriture : {e}")
+
+    def _daily_report(self) -> None:
+        """Pick a past date, then generate + open the end-of-day PDF."""
+        picker = _DailyReportDatePicker(self)
+        if not picker.exec() or picker.selected is None:
+            return
+        day = picker.selected.toString("yyyy-MM-dd")
+        run_api(
+            lambda: self.api.get_daily_report_pdf(self.store_id, day),
+            lambda pdf: self._open_daily_report(day, pdf),
+            lambda err: show_error(self, err.message),
+        )
+
+    def _open_daily_report(self, day: str, pdf: bytes) -> None:
+        from services import printing
+
+        path = Path(tempfile.gettempdir()) / f"rapport_journalier_{day}.pdf"
+        try:
+            path.write_bytes(pdf)
+            printing.open_file(path)
+        except OSError as exc:
+            show_error(self, strings.OPEN_PDF_FAILED.format(path=exc))
 
     def refresh(self) -> None:
         date_from, date_to = self._range()

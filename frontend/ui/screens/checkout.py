@@ -9,14 +9,14 @@ checkout — the client never sends prices. F12 opens the payment dialog
 """
 
 import tempfile
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
 import qtawesome as qta
 import shiboken6
 from loguru import logger
-from PySide6.QtCore import QPoint, QSize, Qt, QTimer
+from PySide6.QtCore import QPoint, QSettings, QSize, Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
@@ -42,11 +42,16 @@ from ui import strings
 from ui.styles.tokens import ICON_SIZES, NEUTRAL, SPACING
 from ui.widgets.badge import Badge
 from ui.widgets.customer_search import CustomerSearchBox
+from ui.widgets.day_closing_dialog import DayClosingDialog
 from ui.widgets.modal import ask_confirm, show_error
 from ui.widgets.payment_dialogs import CheckoutPaymentDialog
+from ui.widgets.pin_dialog import PinConfirmDialog
 from ui.widgets.states import EmptyState
 from ui.widgets.thumb import Thumb
 from ui.widgets.toast import show_toast
+
+_CLOSING_ORG = "GestionStockPOS"
+_CLOSING_APP = "GestionStockPOS"
 
 _PRICE_FIELDS = {
     "detail": "price_detail",
@@ -87,7 +92,9 @@ class CartLine:
         # Set only when the cashier types a price (level == "manual"); the
         # server re-checks it against the floor.
         self.manual_price: Decimal | None = None
-        self.discount = Decimal("0.00")
+        # Per-line percentage discount (0–99). The server re-derives the amount
+        # and re-checks the price floor.
+        self.discount_percent = 0
 
     def _price_source(self) -> dict:
         return self.packaging if self.packaging else self.product
@@ -101,9 +108,14 @@ class CartLine:
         return Decimal(self._price_source()[field])
 
     @property
+    def discount_amount(self) -> Decimal:
+        gross = self.unit_price * self.quantity
+        return (gross * Decimal(self.discount_percent) / 100).quantize(Decimal("0.01"))
+
+    @property
     def total(self) -> Decimal:
         gross = self.unit_price * self.quantity
-        return (gross - self.discount).quantize(Decimal("0.01"))
+        return (gross - self.discount_amount).quantize(Decimal("0.01"))
 
     @property
     def base_units(self) -> int:
@@ -171,6 +183,9 @@ class CheckoutScreen(QWidget):
         # Price level auto-applied to new lines while a "habitual" customer is
         # attached (None = each line keeps its own default).
         self._preferred_level: str | None = None
+        # Applied promo code (the validate response: code/type/value); the
+        # discount is recomputed live from it and re-checked server-side.
+        self._promo: dict | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(*[SPACING["xl"]] * 4)
@@ -200,6 +215,17 @@ class CheckoutScreen(QWidget):
         self.clear_customer_button.clicked.connect(self._clear_customer)
         self.clear_customer_button.hide()
         header.addWidget(self.clear_customer_button)
+
+        # Clôture de caisse — daily reconciliation (owner, PIN-gated). Enabled
+        # only once a sale exists today, disabled again after the day is closed.
+        self.close_day_button = QPushButton(
+            qta.icon("fa5s.cash-register", color=NEUTRAL["600"]),
+            strings.CHECKOUT_CLOSE_DAY,
+        )
+        self.close_day_button.setObjectName("Secondary")
+        self.close_day_button.setEnabled(False)
+        self.close_day_button.clicked.connect(self._handle_close_day)
+        header.addWidget(self.close_day_button)
         layout.addLayout(header)
 
         # Outstanding-balance warning — prominent, directly under the customer
@@ -287,6 +313,32 @@ class CheckoutScreen(QWidget):
         self.cart_stack.addWidget(self.table)
         layout.addWidget(self.cart_stack, stretch=1)
 
+        # Promo code row — validate a coupon and preview its discount.
+        promo_row = QHBoxLayout()
+        promo_caption = QLabel(strings.CHECKOUT_PROMO_LABEL)
+        promo_caption.setObjectName("Caption")
+        promo_row.addWidget(promo_caption)
+        self.promo_input = QLineEdit()
+        self.promo_input.setPlaceholderText(strings.CHECKOUT_PROMO_PLACEHOLDER)
+        self.promo_input.setFixedWidth(180)
+        self.promo_input.returnPressed.connect(self._apply_promo)
+        promo_row.addWidget(self.promo_input)
+        self.promo_apply = QPushButton(strings.CHECKOUT_PROMO_APPLY)
+        self.promo_apply.setObjectName("Secondary")
+        self.promo_apply.clicked.connect(self._apply_promo)
+        promo_row.addWidget(self.promo_apply)
+        self.promo_clear = QPushButton(qta.icon("fa5s.times", color=NEUTRAL["600"]), "")
+        self.promo_clear.setObjectName("Ghost")
+        self.promo_clear.setToolTip(strings.CHECKOUT_PROMO_REMOVE)
+        self.promo_clear.clicked.connect(self._clear_promo)
+        self.promo_clear.hide()
+        promo_row.addWidget(self.promo_clear)
+        self.promo_label = QLabel("")
+        self.promo_label.setObjectName("Secondary")
+        promo_row.addWidget(self.promo_label)
+        promo_row.addStretch(1)
+        layout.addLayout(promo_row)
+
         footer = QHBoxLayout()
         # Park & recall controls (left side of the caisse action bar).
         self.suspend_button = QPushButton(
@@ -327,6 +379,13 @@ class CheckoutScreen(QWidget):
         QShortcut(QKeySequence(Qt.Key.Key_F10), self, activated=self._resume_sale)
 
         self._rebuild_table()
+        self._refresh_close_button()
+
+    def showEvent(self, event) -> None:
+        # Re-evaluate the clôture button whenever the caisse is shown (the day
+        # may have rolled over, or sales may have happened elsewhere).
+        super().showEvent(event)
+        self._refresh_close_button()
 
     # ------------------------------------------------------------ customer
 
@@ -623,11 +682,12 @@ class CheckoutScreen(QWidget):
             )
             self.table.setCellWidget(row, 4, _centered_cell(qty))
 
-            # Discount: a typed number field (no arrows), fills the column.
-            discount_spin = QDoubleSpinBox()
-            discount_spin.setDecimals(2)
-            discount_spin.setMaximum(99_999_999.99)
-            discount_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
+            # Discount: a percentage (0–99 %) — the server re-derives the amount
+            # and re-checks the price floor.
+            discount_spin = QSpinBox()
+            discount_spin.setRange(0, 99)
+            discount_spin.setSuffix(" %")
+            discount_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
             discount_spin.setFixedHeight(_CELL_CONTROL_H)
             discount_spin.setSizePolicy(
                 QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
@@ -635,7 +695,7 @@ class CheckoutScreen(QWidget):
             discount_spin.setAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
-            discount_spin.setValue(float(line.discount))
+            discount_spin.setValue(int(line.discount_percent))
             discount_spin.setToolTip(strings.CHECKOUT_DISCOUNT_TIP)
             discount_spin.valueChanged.connect(
                 lambda value, target=line: self._on_discount_changed(target, value)
@@ -662,9 +722,17 @@ class CheckoutScreen(QWidget):
         self.cart_stack.setCurrentWidget(self.table if self.cart else self.cart_empty)
 
     def _refresh_totals(self) -> None:
-        total = sum((line.total for line in self.cart), Decimal("0.00"))
-        self.total_label.setText(fmt.fmt_money(total))
+        self.total_label.setText(fmt.fmt_money(self._cart_total()))
         self.pay_button.setEnabled(bool(self.cart))
+        # Keep the applied-promo line in sync with the live cart.
+        if self._promo is not None:
+            discount = self._promo_discount_for(self._cart_subtotal())
+            self.promo_label.setText(
+                strings.CHECKOUT_PROMO_APPLIED.format(
+                    code=self._promo.get("code", ""),
+                    discount=fmt.fmt_money(discount),
+                )
+            )
 
     def _sync_price_cell(self, line: CartLine) -> None:
         """Set the price spin's value + editability from the line's state.
@@ -727,8 +795,8 @@ class CheckoutScreen(QWidget):
         line.quantity = value
         self._update_line_cells(line)
 
-    def _on_discount_changed(self, line: CartLine, value: float) -> None:
-        line.discount = Decimal(f"{value:.2f}")
+    def _on_discount_changed(self, line: CartLine, value: int) -> None:
+        line.discount_percent = int(value)
         self._update_line_cells(line)
 
     def _remove_line(self, index: int) -> None:
@@ -751,6 +819,7 @@ class CheckoutScreen(QWidget):
         self.cart.clear()
         self.customer = None
         self._preferred_level = None
+        self._clear_promo()
         self._hide_balance_warning()
         self._refresh_customer_strip()
         self._rebuild_table()
@@ -769,7 +838,7 @@ class CheckoutScreen(QWidget):
                         if line.manual_price is not None
                         else None
                     ),
-                    "discount": str(line.discount),
+                    "discount_percent": line.discount_percent,
                 }
                 for line in self.cart
             ],
@@ -825,7 +894,7 @@ class CheckoutScreen(QWidget):
             line.level = item.get("level", "detail")
             manual = item.get("manual_price")
             line.manual_price = Decimal(manual) if manual is not None else None
-            line.discount = Decimal(item.get("discount", "0.00"))
+            line.discount_percent = int(item.get("discount_percent", 0))
             self.cart.append(line)
         self.customer = snapshot.get("customer")
         self._preferred_level = snapshot.get("preferred_level")
@@ -848,8 +917,64 @@ class CheckoutScreen(QWidget):
 
     # ------------------------------------------------------------ checkout
 
-    def _cart_total(self) -> Decimal:
+    def _cart_subtotal(self) -> Decimal:
         return sum((line.total for line in self.cart), Decimal("0.00"))
+
+    def _promo_discount_for(self, subtotal: Decimal) -> Decimal:
+        """Live coupon discount for a subtotal (server stays authoritative)."""
+        if not self._promo:
+            return Decimal("0.00")
+        value = Decimal(str(self._promo.get("value", "0")))
+        if self._promo.get("type") == "percent":
+            raw = subtotal * value / 100
+        else:
+            raw = value
+        return min(raw, subtotal).quantize(Decimal("0.01"))
+
+    def _cart_total(self) -> Decimal:
+        subtotal = self._cart_subtotal()
+        return (subtotal - self._promo_discount_for(subtotal)).quantize(Decimal("0.01"))
+
+    # ------------------------------------------------------------- promo code
+
+    def _apply_promo(self) -> None:
+        code = self.promo_input.text().strip()
+        if not code:
+            return
+        subtotal = self._cart_subtotal()
+        if subtotal <= 0:
+            show_error(self, strings.CHECKOUT_PROMO_EMPTY_CART)
+            return
+        self.promo_apply.setEnabled(False)
+        run_api(
+            lambda: self.api.validate_promotion(self.store_id, code, f"{subtotal:.2f}"),
+            self._on_promo_valid,
+            self._on_promo_error,
+        )
+
+    def _on_promo_valid(self, result: object) -> None:
+        if not shiboken6.isValid(self):
+            return
+        self._promo = dict(result)
+        self.promo_input.setEnabled(False)
+        self.promo_apply.setEnabled(False)
+        self.promo_clear.show()
+        self._refresh_totals()
+
+    def _on_promo_error(self, err) -> None:
+        if not shiboken6.isValid(self):
+            return
+        self.promo_apply.setEnabled(True)
+        show_error(self, err.message)
+
+    def _clear_promo(self) -> None:
+        self._promo = None
+        self.promo_input.clear()
+        self.promo_input.setEnabled(True)
+        self.promo_apply.setEnabled(True)
+        self.promo_clear.hide()
+        self.promo_label.clear()
+        self._refresh_totals()
 
     def _line_payload(self, line: CartLine) -> dict:
         """Server payload for one cart line — never a price, only a level and
@@ -865,8 +990,8 @@ class CheckoutScreen(QWidget):
             payload["packaging_id"] = line.packaging["id"]
         if line.level == "manual" and line.manual_price is not None:
             payload["unit_price_override"] = f"{line.manual_price:.2f}"
-        if line.discount > 0:
-            payload["discount_amount"] = f"{line.discount:.2f}"
+        if line.discount_percent > 0:
+            payload["discount_percent"] = int(line.discount_percent)
         return payload
 
     def _checkout(self) -> None:
@@ -885,8 +1010,11 @@ class CheckoutScreen(QWidget):
         self.pay_button.setEnabled(False)
         items = [self._line_payload(line) for line in self.cart]
         payment = dialog.payment
+        promo_code = self._promo.get("code") if self._promo else None
         run_api(
-            lambda: self.api.checkout(self.store_id, items, payment),
+            lambda: self.api.checkout(
+                self.store_id, items, payment, promo_code=promo_code
+            ),
             lambda sale: self._on_sale_done(sale, payment),
             self._on_sale_error,
         )
@@ -896,6 +1024,7 @@ class CheckoutScreen(QWidget):
         self.cart.clear()
         self.customer = None
         self._preferred_level = None
+        self._clear_promo()
         self._hide_balance_warning()
         self._refresh_customer_strip()
         self._rebuild_table()
@@ -906,6 +1035,7 @@ class CheckoutScreen(QWidget):
         window = self.window()
         if hasattr(window, "refresh_alerts_badge"):
             window.refresh_alerts_badge()  # a credit sale may add an alert
+        self._refresh_close_button()  # first sale of the day enables clôture
         self.search.setFocus()
         show_toast(self, strings.CHECKOUT_DONE_TOAST)
         run_api(
@@ -948,3 +1078,61 @@ class CheckoutScreen(QWidget):
         except OSError as exc:
             logger.warning("Receipt print failed: {}", exc)
             show_error(self, strings.RECEIPT_PRINT_FAILED.format(path=path))
+
+    # -------------------------------------------------- clôture de caisse
+
+    def _closed_today(self) -> bool:
+        """True if this store's caisse was already closed today (local flag)."""
+        settings = QSettings(_CLOSING_ORG, _CLOSING_APP)
+        return settings.value(f"day_closed_{self.store_id}") == date.today().isoformat()
+
+    def _refresh_close_button(self) -> None:
+        """Disable + relabel when already closed today; otherwise enable only
+        once at least one sale exists today."""
+        if self._closed_today():
+            self.close_day_button.setEnabled(False)
+            self.close_day_button.setText(strings.CHECKOUT_CLOSE_DONE)
+            return
+        self.close_day_button.setText(strings.CHECKOUT_CLOSE_DAY)
+        run_api(
+            lambda: self.api.get_day_summary(self.store_id, date.today().isoformat()),
+            self._on_close_summary,
+            lambda err: None,  # best-effort; the button just stays disabled
+        )
+
+    def _on_close_summary(self, summary: object) -> None:
+        if not shiboken6.isValid(self) or self._closed_today():
+            return
+        self.close_day_button.setEnabled(int(summary.get("sales_count", 0)) > 0)
+
+    def _handle_close_day(self) -> None:
+        if self._closed_today():
+            return
+        pin_dialog = PinConfirmDialog(
+            self.api, prompt=strings.CLOSING_PIN_PROMPT, parent=self
+        )
+        if not pin_dialog.exec() or not pin_dialog.pin:
+            return
+        pin = pin_dialog.pin
+        today = date.today().isoformat()
+        run_api(
+            lambda: self.api.get_day_summary(self.store_id, today),
+            lambda summary: self._open_closing(today, summary, pin),
+            lambda err: show_error(self, err.message),
+        )
+
+    def _open_closing(self, today: str, summary: dict, pin: str) -> None:
+        if not shiboken6.isValid(self):
+            return
+        if int(summary.get("sales_count", 0)) <= 0:
+            show_error(self, strings.CLOSING_NO_SALES)
+            return
+        dialog = DayClosingDialog(
+            self.api, self.store_id, today, summary, pin, parent=self
+        )
+        if dialog.exec() and dialog.result:
+            QSettings(_CLOSING_ORG, _CLOSING_APP).setValue(
+                f"day_closed_{self.store_id}", today
+            )
+            show_toast(self, strings.CLOSING_DONE_TOAST)
+            self._refresh_close_button()

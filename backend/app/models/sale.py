@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import BaseModel, StoreScopedMixin
@@ -37,6 +37,18 @@ class Sale(BaseModel, StoreScopedMixin):
         Money, nullable=False, default=Decimal("0.00")
     )
     invoice_number: Mapped[int | None] = mapped_column(nullable=True, default=None)
+    # Which user rang the sale (multi-user roles). A soft reference (no FK,
+    # SQLite-safe) — NULL for legacy/open-mode sales. Lets a cashier see only
+    # their own sales.
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, nullable=True, default=None
+    )
+    # Optional coupon applied at checkout (Phase 18). promo_discount is the
+    # amount it took off the cart total; total_amount is already net of it.
+    promo_code: Mapped[str | None] = mapped_column(String(40), default=None)
+    promo_discount: Mapped[Decimal] = mapped_column(
+        Money, nullable=False, default=Decimal("0.00"), server_default="0"
+    )
 
     # No delete/delete-orphan cascade: sale items and payments are financial
     # records and must never be hard-deleted, not even by accidental

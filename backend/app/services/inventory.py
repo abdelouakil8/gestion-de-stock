@@ -16,7 +16,11 @@ from uuid import UUID
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import InsufficientStockError, InvalidQuantityError
+from app.core.exceptions import (
+    InsufficientStockError,
+    InvalidQuantityError,
+    NotFoundError,
+)
 from app.models import Product
 from app.models.stock_movement import MovementType, StockMovement
 
@@ -30,6 +34,7 @@ def record_movement(
     after: int,
     movement_type: MovementType,
     ref_id: UUID | None = None,
+    reason: str | None = None,
     note: str | None = None,
 ) -> None:
     """Append a StockMovement row. Does NOT commit — caller owns the transaction."""
@@ -41,9 +46,56 @@ def record_movement(
             quantity_delta=delta,
             quantity_after=after,
             reference_id=ref_id,
+            reason=reason,
             note=note,
         )
     )
+
+
+def adjust_stock(
+    db: Session,
+    product_id: UUID,
+    *,
+    new_quantity: int,
+    reason: str,
+    note: str | None = None,
+) -> tuple[Product, int, int]:
+    """Set a product's counted real stock, atomically.
+
+    Computes ``delta = new_quantity - current_stock``, overwrites the stock
+    level and appends an ``adjustment`` movement carrying the motive/note —
+    all in one transaction (this owns its commit, unlike the checkout-driven
+    helpers below). Returns (product, old_quantity, delta).
+    """
+    if new_quantity < 0:
+        raise InvalidQuantityError(new_quantity)
+    try:
+        product = db.scalar(
+            select(Product).where(
+                Product.id == product_id, Product.deleted_at.is_(None)
+            )
+        )
+        if product is None:
+            raise NotFoundError("produit", product_id)
+        old_quantity = product.stock_quantity
+        delta = new_quantity - old_quantity
+        product.stock_quantity = new_quantity
+        record_movement(
+            db,
+            store_id=product.store_id,
+            product_id=product.id,
+            delta=delta,
+            after=new_quantity,
+            movement_type=MovementType.adjustment,
+            reason=reason,
+            note=note,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(product)
+    return product, old_quantity, delta
 
 
 def decrement_stock(
@@ -53,12 +105,14 @@ def decrement_stock(
     if quantity < 1:
         raise InvalidQuantityError(quantity)
 
+    # Availability, not raw stock: units held by active reservations are not
+    # sellable at the caisse. The check + write stay a single atomic statement.
     result = db.execute(
         update(Product)
         .where(
             Product.id == product.id,
             Product.deleted_at.is_(None),
-            Product.stock_quantity >= quantity,
+            Product.stock_quantity - Product.reserved_quantity >= quantity,
         )
         .values(stock_quantity=Product.stock_quantity - quantity)
         .execution_options(synchronize_session=False)

@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -43,7 +44,9 @@ from ui.styles.tokens import (
 )
 from ui.widgets.card import SectionCard
 from ui.widgets.modal import ModalDialog, show_error, show_info
+from ui.widgets.promotions_management import PromotionsManagementTab
 from ui.widgets.toast import show_toast
+from ui.widgets.users_management import UsersManagementTab
 
 
 class FactoryResetDialog(ModalDialog):
@@ -472,9 +475,29 @@ class SettingsScreen(QWidget):
         body.addLayout(preview_column)
 
         scroll.setWidget(content)
-        outer.addWidget(scroll, stretch=1)
+
+        # Tabbed: the general settings + an owner-only user-management tab
+        # (Promotions is added by the promotions feature). The header Save
+        # button applies only to the general tab.
+        self.tabs = QTabWidget()
+        self.tabs.addTab(scroll, strings.SETTINGS_TAB_GENERAL)
+        self.users_tab = UsersManagementTab(self.api, self.store_id)
+        self.tabs.addTab(self.users_tab, strings.SETTINGS_TAB_USERS)
+        self.promotions_tab = PromotionsManagementTab(self.api, self.store_id)
+        self.tabs.addTab(self.promotions_tab, strings.SETTINGS_TAB_PROMOTIONS)
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+        outer.addWidget(self.tabs, stretch=1)
 
     # ------------------------------------------------------------- loading
+
+    def _on_tab_changed(self, index: int) -> None:
+        widget = self.tabs.widget(index)
+        # The Save button only makes sense on the general settings tab.
+        self.save_button.setVisible(index == 0)
+        if widget is self.users_tab:
+            self.users_tab.refresh()
+        elif hasattr(widget, "refresh") and index != 0:
+            widget.refresh()
 
     def refresh(self) -> None:
         run_api(

@@ -30,13 +30,21 @@ from services.workers import run_api
 from ui import strings
 from ui.screens.alerts import AlertsScreen
 from ui.screens.checkout import CheckoutScreen
+from ui.screens.creances import CreancesScreen
 from ui.screens.customers import CustomersScreen
+from ui.screens.dashboard import DashboardScreen
 from ui.screens.inventory import InventoryScreen
+from ui.screens.label_printing import LabelPrintingScreen
+from ui.screens.reservations import ReservationsScreen
 from ui.screens.settings_screen import SettingsScreen
 from ui.screens.statistics import StatisticsScreen
 from ui.screens.suppliers import SuppliersScreen
 from ui.screens.ventes import VentesScreen
 from ui.styles.tokens import ICON_SIZES, NEUTRAL, SPACING
+
+# Role privilege order — the sidebar shows an item when the user's rank is at
+# or above the item's minimum.
+_ROLE_RANK = {"cashier": 0, "manager": 1, "owner": 2}
 
 
 class TitleBar(QWidget):
@@ -250,6 +258,9 @@ class MainWindow(QMainWindow):
         self.ventes = VentesScreen(
             api, store["id"], on_view_product=self._open_product_from_alert
         )
+        self.creances = CreancesScreen(api, store["id"])
+        self.reservations = ReservationsScreen(api, store["id"])
+        self.label_printing = LabelPrintingScreen(api, store["id"])
         self.statistics = StatisticsScreen(api, store["id"])
         self.suppliers_screen = SuppliersScreen(api, store["id"])
         self.alerts = AlertsScreen(
@@ -259,29 +270,55 @@ class MainWindow(QMainWindow):
             self._open_purchase_from_alert,
         )
         self.settings_screen = SettingsScreen(api, store)
+        # Dashboard is the home screen; its low-stock card jumps to Alertes.
+        self.dashboard = DashboardScreen(
+            api, store["id"], on_open_alerts=lambda: self.navigate(self.alerts)
+        )
+
+        # Role-gated navigation. Each item declares the minimum role that may
+        # see it; visibility is monotonic (cashier ⊂ manager ⊂ owner):
+        #   cashier → Caisse + Ventes (own); manager → everything but
+        #   Statistiques & Réglages; owner → everything. Legacy/open mode
+        #   (no session) is treated as owner so nothing is hidden.
+        role = self.api.role or "owner"
+        rank = _ROLE_RANK.get(role, _ROLE_RANK["owner"])
 
         self._nav_buttons: list[NavButton] = []
-        for icon_name, label, screen in [
-            ("fa5s.cash-register", strings.NAV_CHECKOUT, self.checkout),
-            ("fa5s.boxes", strings.NAV_INVENTORY, self.inventory),
-            ("fa5s.users", strings.NAV_CUSTOMERS, self.customers),
-            ("fa5s.receipt", strings.NAV_SALES, self.ventes),
-            ("fa5s.truck", strings.NAV_PURCHASES, self.suppliers_screen),
-            ("fa5s.chart-line", strings.NAV_STATISTICS, self.statistics),
-            ("fa5s.bell", strings.NAV_ALERTS, self.alerts),
-            ("fa5s.cog", strings.NAV_SETTINGS, self.settings_screen),
+        for icon_name, label, screen, min_role in [
+            ("fa5s.tachometer-alt", strings.NAV_DASHBOARD, self.dashboard, "manager"),
+            ("fa5s.cash-register", strings.NAV_CHECKOUT, self.checkout, "cashier"),
+            ("fa5s.boxes", strings.NAV_INVENTORY, self.inventory, "manager"),
+            ("fa5s.users", strings.NAV_CUSTOMERS, self.customers, "manager"),
+            ("fa5s.receipt", strings.NAV_SALES, self.ventes, "cashier"),
+            ("fa5s.hand-holding-usd", strings.NAV_CREANCES, self.creances, "manager"),
+            ("fa5s.bookmark", strings.NAV_RESERVATIONS, self.reservations, "manager"),
+            ("fa5s.tag", strings.NAV_LABELS, self.label_printing, "manager"),
+            ("fa5s.truck", strings.NAV_PURCHASES, self.suppliers_screen, "manager"),
+            ("fa5s.chart-line", strings.NAV_STATISTICS, self.statistics, "owner"),
+            ("fa5s.bell", strings.NAV_ALERTS, self.alerts, "manager"),
+            ("fa5s.cog", strings.NAV_SETTINGS, self.settings_screen, "owner"),
         ]:
             self.stack.addWidget(screen)
             button = NavButton(icon_name, label)
             button.clicked.connect(lambda _, s=screen: self.navigate(s))
+            button.setVisible(rank >= _ROLE_RANK[min_role])
             nav.addWidget(button)
             self._nav_buttons.append(button)
+            # Track the Alertes item by reference (its live badge is updated
+            # by the poll) so the nav order can change without a magic index.
+            if screen is self.alerts:
+                self.alerts_nav = button
         nav.addStretch(1)
-        self.alerts_nav = self._nav_buttons[6]
 
         body.addWidget(sidebar)
         body.addWidget(self.stack, stretch=1)
         root_layout.addLayout(body, stretch=1)
+
+        # Landing screen: the dashboard for manager/owner, the caisse for a
+        # cashier (who cannot see the dashboard).
+        self._default_screen = (
+            self.dashboard if rank >= _ROLE_RANK["manager"] else self.checkout
+        )
 
         # Resize grip OVERLAYED in the end corner — a dedicated layout row
         # would paint a full-width strip under the sidebar (white band bug).
@@ -291,7 +328,7 @@ class MainWindow(QMainWindow):
         self._size_grip.raise_()
 
         self.setCentralWidget(root)
-        self.navigate(self.checkout)
+        self.navigate(self._default_screen)
 
         # Alerts badge: poll every 30 s + explicit refreshes after actions.
         self._alerts_timer = QTimer(self)

@@ -807,3 +807,331 @@ CUSTOMER_DEFAULT_PRICE_LEVEL = "Tarif habituel"
 CUSTOMER_PRICE_LEVEL_NONE = "Aucun (au choix du caissier)"
 
 ACTION_CLOSE = "Fermer"
+
+# ======================================================================
+# Phase 15/16 — inventory adjustment, movements log, créances, clôture,
+# rapport journalier, tableau de bord.
+# ======================================================================
+
+# --- Confirmation PIN (dialogue réutilisable)
+PIN_CONFIRM_TITLE = "Confirmation requise"
+PIN_CONFIRM_PROMPT = "Saisissez votre code PIN pour confirmer."
+PIN_CONFIRM_WRONG = "Code PIN incorrect."
+PIN_CONFIRM_BUTTON = "Confirmer"
+
+# --- Feature 1 : ajustement d'inventaire
+INVENTORY_ADJUST_BUTTON = "Ajustement inventaire"
+ADJUST_TITLE = "Ajustement d'inventaire"
+ADJUST_STEP_PRODUCT = "1. Choisir le produit"
+ADJUST_STEP_ENTRY = "2. Saisir le stock compté"
+ADJUST_STEP_CONFIRM = "3. Confirmation"
+ADJUST_SEARCH_PLACEHOLDER = "Rechercher un produit à ajuster…"
+ADJUST_CURRENT_STOCK = "Stock actuel : {qty} unités"
+ADJUST_COUNTED_LABEL = "Stock réel compté :"
+ADJUST_DELTA_POS = "+{n} unités"
+ADJUST_DELTA_NEG = "-{n} unités"
+ADJUST_DELTA_ZERO = "Aucun changement"
+ADJUST_REASON_LABEL = "Motif :"
+ADJUST_NOTE_LABEL = "Note (facultatif) :"
+ADJUST_NOTE_PLACEHOLDER = "Commentaire…"
+ADJUST_NEXT = "Suivant"
+ADJUST_BACK = "Retour"
+ADJUST_CONFIRM_BUTTON = "Confirmer l'ajustement"
+ADJUST_CONFIRM_SENTENCE = (
+    "Vous allez modifier le stock de « {product} » de {old} à {new} "
+    "(différence : {delta})."
+)
+ADJUST_DONE_TOAST = "Stock de {product} mis à jour : {old} → {new} unités"
+ADJUST_SELECT_PRODUCT_FIRST = "Sélectionnez d'abord un produit."
+# Motifs (code envoyé au serveur -> libellé affiché).
+ADJUST_REASONS = {
+    "inventaire": "Inventaire physique",
+    "perte": "Perte",
+    "casse": "Casse",
+    "correction": "Correction",
+    "autre": "Autre",
+}
+
+# --- Feature 2 : journal des mouvements de stock
+INVENTORY_TAB_PRODUCTS = "Produits"
+INVENTORY_TAB_MOVEMENTS = "Mouvements de stock"
+MOVEMENTS_COL_DATETIME = "Date / Heure"
+MOVEMENTS_COL_PRODUCT = "Produit"
+MOVEMENTS_COL_CATEGORY = "Catégorie"
+MOVEMENTS_COL_TYPE = "Type"
+MOVEMENTS_COL_DELTA = "Quantité"
+MOVEMENTS_COL_AFTER = "Stock après"
+MOVEMENTS_COL_REFERENCE = "Référence"
+MOVEMENTS_COL_NOTE = "Note"
+MOVEMENTS_SEARCH_PLACEHOLDER = "Filtrer par produit…"
+MOVEMENTS_FILTER_ALL_TYPES = "Tous les types"
+MOVEMENTS_FILTER_SALES = "Ventes"
+MOVEMENTS_FILTER_PURCHASES = "Achats"
+MOVEMENTS_FILTER_ADJUSTMENTS = "Ajustements"
+MOVEMENTS_FILTER_RETURNS = "Retours"
+MOVEMENTS_FILTER_ALL_CATEGORIES = "Toutes les catégories"
+MOVEMENTS_FROM = "Du"
+MOVEMENTS_TO = "au"
+MOVEMENTS_EXPORT_XLSX = "Exporter Excel"
+MOVEMENTS_EXPORT_EMPTY = "Aucun mouvement à exporter."
+MOVEMENTS_EMPTY = "Aucun mouvement de stock sur la période."
+MOVEMENTS_LOAD_MORE = "Voir plus"
+
+# --- Feature 3 : créances clients
+NAV_CREANCES = "Créances"
+CREANCES_TITLE = "Créances clients"
+CREANCES_SUMMARY = "{total} dus · {count} débiteurs"
+CREANCES_SEARCH = "Rechercher un client…"
+CREANCES_COL_CUSTOMER = "Client"
+CREANCES_COL_DATE = "Date de vente"
+CREANCES_COL_TOTAL = "Total"
+CREANCES_COL_PAID = "Payé"
+CREANCES_COL_BALANCE = "Reste dû"
+CREANCES_COL_AGE = "Ancienneté"
+CREANCES_COL_ACTIONS = "Actions"
+CREANCES_ENCAISSER = "Encaisser"
+CREANCES_RECEIPT = "Reçu"
+CREANCES_AGE_DAYS = "{days} j"
+CREANCES_EMPTY = "Aucune créance en cours"
+CREANCES_EMPTY_HINT = "Toutes les ventes sont réglées."
+CREANCES_VIEW_FLAT = "Liste"
+CREANCES_VIEW_GROUPED = "Par client"
+CREANCES_GROUP_SUBTOTAL = "Sous-total : {total}"
+CREANCES_EXPORT_PDF = "Exporter PDF"
+CREANCES_PAYMENT_DONE = "Paiement enregistré."
+
+# --- Feature 4 : clôture de caisse
+CHECKOUT_CLOSE_DAY = "Clôture de caisse"
+CHECKOUT_CLOSE_DONE = "Clôture effectuée"
+CLOSING_TITLE = "Clôture de caisse"
+CLOSING_SECTION_SUMMARY = "Récapitulatif automatique"
+CLOSING_SECTION_COUNT = "Comptage physique"
+CLOSING_SECTION_ACTIONS = "Actions"
+CLOSING_SALES_COUNT = "Ventes du jour"
+CLOSING_REVENUE = "Chiffre d'affaires"
+CLOSING_CASH = "Espèces"
+CLOSING_CARD = "Carte"
+CLOSING_TRANSFER = "Virement"
+CLOSING_DISCOUNTS = "Remises accordées"
+CLOSING_REFUNDS = "Remboursements"
+CLOSING_EXPECTED_CASH = "Espèces attendues en caisse"
+CLOSING_PHYSICAL_LABEL = "Espèces comptées en caisse (DA)"
+CLOSING_GAP_LABEL = "Écart caisse :"
+CLOSING_GAP_POS = "+{amount}"
+CLOSING_GAP_NEG = "-{amount}"
+CLOSING_NOTE_LABEL = "Note d'écart (facultatif)"
+CLOSING_NOTE_PLACEHOLDER = "Explication d'un éventuel écart…"
+CLOSING_PRINT = "Imprimer le rapport de clôture"
+CLOSING_CONFIRM = "Confirmer la clôture"
+CLOSING_DONE_TOAST = "Clôture de caisse enregistrée."
+CLOSING_NO_SALES = "Aucune vente aujourd'hui — rien à clôturer."
+CLOSING_PIN_PROMPT = "Saisissez votre code PIN pour clôturer la caisse."
+
+# --- Feature 5 : rapport journalier
+STATS_DAILY_REPORT = "Rapport journalier"
+STATS_DAILY_REPORT_TITLE = "Rapport journalier"
+STATS_DAILY_REPORT_PROMPT = "Choisissez la date du rapport :"
+STATS_DAILY_REPORT_GENERATE = "Générer le rapport"
+
+# --- Feature 6 : tableau de bord
+NAV_DASHBOARD = "Tableau de bord"
+DASHBOARD_TITLE = "Tableau de bord"
+DASH_TODAY_REVENUE = "Chiffre d'affaires du jour"
+DASH_TODAY_SALES = "Ventes du jour"
+DASH_LOW_STOCK = "Alertes stock faible"
+DASH_OUTSTANDING = "Créances en cours"
+DASH_TREND_TITLE = "Évolution des 7 derniers jours"
+DASH_TOP_PRODUCTS = "Top 5 produits"
+DASH_TOP_EMPTY = "Aucune vente ce mois-ci"
+DASH_FINANCIAL = "Situation financière"
+DASH_CUSTOMER_CREDIT = "Crédit clients"
+DASH_SUPPLIER_DEBT = "Dette fournisseurs"
+DASH_RECENT_ACTIVITY = "Activité récente"
+DASH_NO_ACTIVITY = "Aucune vente récente"
+DASH_ANONYMOUS = "Anonyme"
+
+# --- Générique : fichier exporté
+EXPORT_SAVED_TOAST = "Fichier enregistré : {path}"
+OPEN_PDF_FAILED = "Impossible d'ouvrir le PDF : {path}"
+
+# ======================================================================
+# Phase 17 — utilisateurs multi-rôles & authentification par session.
+# ======================================================================
+
+ROLE_LABELS = {
+    "cashier": "Caissier",
+    "manager": "Gérant",
+    "owner": "Propriétaire",
+}
+LOGIN_GREETING = "Bonjour, {name}"
+
+# --- Réglages : onglets
+SETTINGS_TAB_GENERAL = "Général"
+SETTINGS_TAB_USERS = "Utilisateurs"
+
+# --- Gestion des utilisateurs
+USER_NEW = "Nouvel utilisateur"
+USER_EDIT = "Modifier"
+USER_DEACTIVATE = "Désactiver"
+USER_DIALOG_NEW = "Nouvel utilisateur"
+USER_DIALOG_EDIT = "Modifier l'utilisateur"
+USER_NAME = "Nom"
+USER_ROLE = "Rôle"
+USER_PIN = "Code PIN"
+USER_PIN_EDIT_HINT = "Code PIN (laisser vide pour ne pas changer)"
+USER_PIN_PLACEHOLDER = "••••"
+USER_PIN_TOO_SHORT = "Le code PIN doit comporter au moins 4 chiffres."
+USER_ACTIVE = "Actif"
+USER_COL_NAME = "Nom"
+USER_COL_ROLE = "Rôle"
+USER_COL_STATUS = "Statut"
+USER_STATUS_ACTIVE = "Actif"
+USER_STATUS_INACTIVE = "Inactif"
+USER_EMPTY = "Aucun utilisateur"
+USER_SAVED_TOAST = "Utilisateur enregistré."
+USER_DEACTIVATED_TOAST = "Utilisateur désactivé."
+USER_DEACTIVATE_CONFIRM = "Désactiver l'utilisateur « {name} » ?"
+
+# ======================================================================
+# Phase 18 — promotions & remises.
+# ======================================================================
+
+# --- Caisse : code promo
+CHECKOUT_PROMO_LABEL = "Code promo :"
+CHECKOUT_PROMO_PLACEHOLDER = "Code…"
+CHECKOUT_PROMO_APPLY = "Appliquer"
+CHECKOUT_PROMO_REMOVE = "Retirer le code promo"
+CHECKOUT_PROMO_APPLIED = "Code {code} : -{discount}"
+CHECKOUT_PROMO_EMPTY_CART = "Ajoutez d'abord des articles au panier."
+
+# --- Réglages : onglet Promotions
+SETTINGS_TAB_PROMOTIONS = "Promotions"
+
+PROMO_TYPE_LABELS = {
+    "percent": "Pourcentage",
+    "fixed": "Montant fixe",
+}
+PROMO_NEW = "Nouvelle promotion"
+PROMO_DEACTIVATE = "Désactiver"
+PROMO_DIALOG_NEW = "Nouvelle promotion"
+PROMO_CODE = "Code"
+PROMO_CODE_PLACEHOLDER = "PROMO10"
+PROMO_TYPE = "Type"
+PROMO_VALUE = "Valeur"
+PROMO_VALUE_REQUIRED = "La valeur doit être supérieure à zéro."
+PROMO_VALID_FROM = "Valide du"
+PROMO_VALID_TO = "au"
+PROMO_MAX_USES = "Utilisations max (0 = illimité)"
+PROMO_UNLIMITED = "Illimité"
+PROMO_DATE_ORDER = "La date de début doit précéder la date de fin."
+PROMO_COL_CODE = "Code"
+PROMO_COL_TYPE = "Type"
+PROMO_COL_VALUE = "Valeur"
+PROMO_COL_VALIDITY = "Validité"
+PROMO_COL_USES = "Utilisations"
+PROMO_COL_STATUS = "Statut"
+PROMO_VALIDITY_RANGE = "du {start} au {end}"
+PROMO_ACTIVE = "Actif"
+PROMO_INACTIVE = "Inactif"
+PROMO_EMPTY = "Aucune promotion"
+PROMO_SAVED_TOAST = "Promotion créée."
+PROMO_DEACTIVATED_TOAST = "Promotion désactivée."
+PROMO_DEACTIVATE_CONFIRM = "Désactiver la promotion « {code} » ?"
+
+# ======================================================================
+# Phase 19 — réservations (mise de côté / layaway).
+# ======================================================================
+
+NAV_RESERVATIONS = "Réservations"
+RESERVATIONS_TITLE = "Réservations"
+RESERVATIONS_EMPTY = "Aucune réservation"
+RESERVATION_NEW = "Nouvelle réservation"
+RESERVATION_NEW_TITLE = "Nouvelle réservation"
+RESERVATION_CREATE = "Créer la réservation"
+RESERVATION_CUSTOMER = "Client"
+RESERVATION_NO_CUSTOMER = "Aucun client sélectionné"
+RESERVATION_CUSTOMER_REQUIRED = "Sélectionnez un client."
+RESERVATION_ITEMS = "Articles"
+RESERVATION_ADD_PRODUCT = "Ajouter un produit…"
+RESERVATION_ITEMS_REQUIRED = "Ajoutez au moins un article."
+RESERVATION_AVAILABLE = "Dispo : {n}"
+RESERVATION_DEPOSIT = "Acompte (DA)"
+RESERVATION_EXPIRES = "Expire le"
+RESERVATION_NOTES = "Notes"
+RESERVATION_COL_CUSTOMER = "Client"
+RESERVATION_COL_ITEMS = "Articles"
+RESERVATION_COL_TOTAL = "Total"
+RESERVATION_COL_DEPOSIT = "Acompte"
+RESERVATION_COL_EXPIRES = "Expire le"
+RESERVATION_COL_STATUS = "Statut"
+RESERVATION_COL_ACTIONS = "Actions"
+RESERVATION_ITEMS_COUNT = "{n} article(s)"
+RESERVATION_FINALIZE = "Finaliser"
+RESERVATION_CANCEL = "Annuler"
+RESERVATION_CANCEL_CONFIRM = (
+    "Annuler la réservation de {name} ? Le stock sera restitué."
+)
+RESERVATION_STATUS_LABELS = {
+    "active": "Active",
+    "completed": "Terminée",
+    "cancelled": "Annulée",
+}
+RESERVATION_EXPIRED = "Expirée"
+RESERVATION_FILTER_ACTIVE = "Actives"
+RESERVATION_FILTER_COMPLETED = "Terminées"
+RESERVATION_FILTER_CANCELLED = "Annulées"
+RESERVATION_FILTER_ALL = "Toutes"
+RESERVATION_CREATED_TOAST = "Réservation créée."
+RESERVATION_FINALIZED_TOAST = "Réservation finalisée en vente."
+RESERVATION_CANCELLED_TOAST = "Réservation annulée."
+
+# ======================================================================
+# Phase 20 — impression d'étiquettes code-barres.
+# ======================================================================
+
+NAV_LABELS = "Étiquettes"
+INVENTORY_LABELS_BUTTON = "Imprimer étiquettes"
+LABELS_TITLE = "Impression d'étiquettes"
+LABELS_SELECT_PRODUCTS = "Produits"
+LABELS_SELECT_ALL = "Tout sélectionner"
+LABELS_SELECT_NONE = "Désélectionner tout"
+LABELS_SELECTED_COUNT = "{n} sélectionné(s)"
+LABELS_PRODUCT_ROW = "{name}  ·  stock : {stock}"
+LABELS_CONFIG = "Configuration"
+LABELS_SIZE = "Taille de l'étiquette"
+LABELS_COPIES = "Copies par produit"
+LABELS_SHOW_NAME = "Afficher le nom"
+LABELS_SHOW_PRICE = "Afficher le prix"
+LABELS_SHOW_BARCODE = "Afficher le code-barres"
+LABELS_SHOW_STORE = "Afficher le nom du magasin"
+LABELS_PRICE_LEVEL = "Niveau de prix"
+LABELS_BARCODE_TYPE = "Type de code-barres"
+LABELS_PREVIEW = "Aperçu"
+LABELS_PRINT = "Imprimer"
+LABELS_EXPORT = "Exporter PDF"
+LABELS_NONE_SELECTED = "Sélectionnez au moins un produit."
+LABELS_GENERATING = "Génération des étiquettes…"
+LABELS_SENT_TO_PRINTER = "Étiquettes envoyées à l'imprimante."
+
+# ======================================================================
+# Phase 21 — comparaison de périodes (statistiques).
+# ======================================================================
+
+STATS_TAB_DASHBOARD = "Tableau de bord"
+STATS_TAB_COMPARISON = "Comparaison de périodes"
+CMP_PERIOD_A = "Période A"
+CMP_PERIOD_B = "Période B"
+CMP_PRESET_MONTH = "Mois vs mois préc."
+CMP_PRESET_QUARTER = "Trimestre vs préc."
+CMP_PRESET_YEAR = "Année vs préc."
+CMP_COMPARE = "Comparer"
+CMP_TABLE_TITLE = "Comparaison"
+CMP_CHART_TITLE = "Chiffre d'affaires par jour"
+CMP_COL_METRIC = "Métrique"
+CMP_COL_CHANGE = "Évolution"
+CMP_METRIC_REVENUE = "Chiffre d'affaires"
+CMP_METRIC_PROFIT = "Bénéfice"
+CMP_METRIC_SALES = "Nombre de ventes"
+CMP_METRIC_BASKET = "Panier moyen"
+CMP_METRIC_CUSTOMERS = "Clients"
+CMP_METRIC_TOP_CATEGORY = "CA meilleure catégorie"

@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query
 
-from app.api.deps import DbDep, OwnerPinDep
+from app.api.deps import DbDep, ManagerDep
 from app.core.exceptions import NotFoundError
 from app.schemas.supplier import (
     PurchaseOrderCreate,
@@ -35,7 +35,7 @@ def get_order(order_id: UUID, db: DbDep):
 
 
 @router.post(
-    "", response_model=PurchaseOrderRead, status_code=201, dependencies=[OwnerPinDep]
+    "", response_model=PurchaseOrderRead, status_code=201, dependencies=[ManagerDep]
 )
 def create_order(payload: PurchaseOrderCreate, db: DbDep):
     return purchasing.receive_stock(db, payload)
@@ -45,7 +45,7 @@ def create_order(payload: PurchaseOrderCreate, db: DbDep):
     "/{order_id}/payments",
     response_model=PurchaseOrderRead,
     status_code=201,
-    dependencies=[OwnerPinDep],
+    dependencies=[ManagerDep],
 )
 def add_payment(order_id: UUID, payload: SupplierPaymentCreate, db: DbDep):
     purchasing.record_supplier_payment(

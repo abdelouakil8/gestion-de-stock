@@ -27,7 +27,7 @@ from app.core.exceptions import (
 )
 from app.models import Customer, Payment, Product, ProductPackaging, Sale, SaleItem
 from app.schemas.sale import CheckoutRequest, PaymentInfo, SaleCreate
-from app.services import inventory, invoicing, pricing
+from app.services import inventory, invoicing, pricing, promotions
 
 
 def _resolve_checkout_payment(
@@ -71,11 +71,19 @@ def _resolve_checkout_payment(
     return info.amount_paid, info.customer_id
 
 
-def finalize_sale(db: Session, data: CheckoutRequest) -> Sale:
+def finalize_sale(
+    db: Session,
+    data: CheckoutRequest,
+    created_by_user_id: UUID | None = None,
+    commit: bool = True,
+) -> Sale:
     """Validate and persist a cart as a Sale, atomically.
 
     Every rule is enforced here, server-side, at the moment of sale —
     regardless of what any UI claimed to have already checked.
+    ``created_by_user_id`` records which logged-in user rang the sale (NULL in
+    legacy/open mode). ``commit=False`` lets a caller (reservation completion)
+    fold this into its own transaction — it then owns the commit/rollback.
     """
     try:
         sale_id = _uuid.uuid4()
@@ -142,8 +150,14 @@ def finalize_sale(db: Session, data: CheckoutRequest) -> Sale:
             base_units = line.quantity * unit_count
             inventory.decrement_stock(db, product, base_units, sale_id=sale_id)
 
-            # Discount: validate that it doesn't push effective price below floor.
-            discount = line.discount_amount or Decimal("0.00")
+            # Discount: a per-line percentage (0–99) resolves to an amount and
+            # takes precedence over a raw amount; either way it is floor-checked.
+            if line.discount_percent:
+                discount = (
+                    unit_price * line.quantity * Decimal(line.discount_percent) / 100
+                ).quantize(Decimal("0.01"))
+            else:
+                discount = line.discount_amount or Decimal("0.00")
             if discount > 0:
                 pkg_floor = packaging.price_super_gros if packaging else None
                 pricing.validate_discount_floor(
@@ -168,6 +182,18 @@ def finalize_sale(db: Session, data: CheckoutRequest) -> Sale:
                 )
             )
 
+        # Coupon: applied to the cart total AFTER line totals, and consumed
+        # atomically (used_count++ guarded by max_uses) inside this same
+        # transaction — so an exhausted/expired code rolls the whole sale back.
+        promo_discount = Decimal("0.00")
+        promo_code_used: str | None = None
+        if data.promo_code:
+            promo, promo_discount = promotions.apply(
+                db, data.store_id, data.promo_code, total
+            )
+            promo_code_used = promo.code
+            total = (total - promo_discount).quantize(Decimal("0.01"))
+
         paid_amount, customer_id = _resolve_checkout_payment(db, data, total)
 
         invoice_num = invoicing.allocate_invoice_number(db, data.store_id)
@@ -178,6 +204,9 @@ def finalize_sale(db: Session, data: CheckoutRequest) -> Sale:
             paid_amount=paid_amount,
             customer_id=customer_id,
             invoice_number=invoice_num,
+            created_by_user_id=created_by_user_id,
+            promo_code=promo_code_used,
+            promo_discount=promo_discount,
             items=sale_items,
         )
         db.add(sale)
@@ -193,11 +222,16 @@ def finalize_sale(db: Session, data: CheckoutRequest) -> Sale:
                     payment_method=payment_method,
                 )
             )
-        db.commit()
+        if commit:
+            db.commit()
+        else:
+            db.flush()
     except Exception:
-        db.rollback()
+        if commit:
+            db.rollback()
         raise
-    db.refresh(sale)
+    if commit:
+        db.refresh(sale)
     logger.info(
         "Sale finalized | sale_id={} store_id={} total={} paid={} lines={}",
         sale.id,
@@ -257,6 +291,7 @@ def list_sales(
     store_id: UUID,
     *,
     customer_id: UUID | None = None,
+    created_by_user_id: UUID | None = None,
     guest: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
@@ -285,6 +320,9 @@ def list_sales(
 
     if customer_id is not None:
         stmt = stmt.where(Sale.customer_id == customer_id)
+
+    if created_by_user_id is not None:
+        stmt = stmt.where(Sale.created_by_user_id == created_by_user_id)
 
     if guest == "pending":
         stmt = stmt.where(Sale.customer_id.is_(None), Sale.guest_confirmed_at.is_(None))

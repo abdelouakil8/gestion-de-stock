@@ -21,6 +21,9 @@ class Product(BaseModel, StoreScopedMixin):
     __table_args__ = (
         CheckConstraint("stock_quantity >= 0", name="stock_quantity_non_negative"),
         CheckConstraint(
+            "reserved_quantity >= 0", name="reserved_quantity_non_negative"
+        ),
+        CheckConstraint(
             "price_detail >= price_gros AND price_gros >= price_super_gros",
             name="price_levels_ordered",
         ),
@@ -45,6 +48,12 @@ class Product(BaseModel, StoreScopedMixin):
     price_gros: Mapped[Decimal] = mapped_column(Money, nullable=False)
     price_super_gros: Mapped[Decimal] = mapped_column(Money, nullable=False)
     stock_quantity: Mapped[int] = mapped_column(nullable=False, default=0)
+    # Units held by active layaway reservations (Phase 19). Available stock =
+    # stock_quantity - reserved_quantity; both the caisse and new reservations
+    # check availability, never the raw total. Maintained atomically.
+    reserved_quantity: Mapped[int] = mapped_column(
+        nullable=False, default=0, server_default="0"
+    )
     # Alert threshold: the /alerts endpoint flags stock_quantity <= threshold.
     low_stock_threshold: Mapped[int] = mapped_column(nullable=False, default=5)
     # Relative path (under RUNTIME_DIR) of the optional product image;

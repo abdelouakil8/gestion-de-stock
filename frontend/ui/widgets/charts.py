@@ -577,6 +577,125 @@ class ColumnChart(QWidget):
                 )
 
 
+class GroupedBarChart(QWidget):
+    """Two-series grouped bars per category — used for period comparison.
+
+    Series A uses the theme accent, series B a fixed violet, with a small
+    legend. Mirrors in RTL by reversing the category order."""
+
+    _COLOR_B = "#7C3AED"
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._labels: list[str] = []
+        self._series_a: list[float] = []
+        self._series_b: list[float] = []
+        self._name_a = "A"
+        self._name_b = "B"
+        self.setMinimumHeight(200)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet("background: transparent;")
+
+    def set_data(
+        self,
+        labels: list[str],
+        series_a: list[float],
+        series_b: list[float],
+        name_a: str = "A",
+        name_b: str = "B",
+    ) -> None:
+        self._labels = list(labels)
+        self._series_a = list(series_a)
+        self._series_b = list(series_b)
+        self._name_a = name_a
+        self._name_b = name_b
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        maximum = max([*self._series_a, *self._series_b], default=0.0)
+        if not self._labels or maximum <= 0:
+            painter.setPen(QColor(tokens.NEUTRAL["500"]))
+            painter.setFont(_scaled_font(self.font(), 1))
+            painter.drawText(
+                self.rect(),
+                Qt.AlignmentFlag.AlignCenter,
+                strings.STATS_NO_DATA,
+            )
+            painter.end()
+            return
+
+        width, height = self.width(), self.height()
+        legend_h, label_h, top_pad = 22, 18, 8
+        plot_h = max(10, height - legend_h - label_h - top_pad)
+        plot_top = legend_h + top_pad
+        accent = QColor(tokens.CURRENT_ACCENT)
+        color_b = QColor(self._COLOR_B)
+
+        # Legend.
+        painter.setFont(_scaled_font(self.font(), -2))
+        painter.setBrush(accent)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(QRectF(8, 6, 12, 12), 2, 2)
+        painter.setPen(QColor(tokens.NEUTRAL["600"]))
+        painter.drawText(
+            QRectF(24, 4, 160, 16), Qt.AlignmentFlag.AlignVCenter, self._name_a
+        )
+        painter.setBrush(color_b)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(QRectF(196, 6, 12, 12), 2, 2)
+        painter.setPen(QColor(tokens.NEUTRAL["600"]))
+        painter.drawText(
+            QRectF(212, 4, 160, 16), Qt.AlignmentFlag.AlignVCenter, self._name_b
+        )
+
+        count = len(self._labels)
+        group_gap = 10
+        group_w = max(8, (width - group_gap * (count + 1)) // max(count, 1))
+        bar_w = max(3, (group_w - 3) // 2)
+        total_w = count * group_w + (count - 1) * group_gap
+        start_x = max(group_gap, (width - total_w) // 2)
+        text_color = QColor(tokens.NEUTRAL["500"])
+
+        order = list(range(count))
+        if self.layoutDirection() == Qt.LayoutDirection.RightToLeft:
+            order.reverse()
+        label_every = 1 if count <= 8 else max(1, (count + 7) // 8)
+        small = _scaled_font(self.font(), -3)
+
+        for position, index in enumerate(order):
+            gx = start_x + position * (group_w + group_gap)
+            for offset, (series, color) in enumerate(
+                ((self._series_a, accent), (self._series_b, color_b))
+            ):
+                value = series[index] if index < len(series) else 0.0
+                bar_h = max(2.0, plot_h * (value / maximum)) if value > 0 else 0.0
+                bx = gx + offset * (bar_w + 3)
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(color)
+                if bar_h > 0:
+                    painter.drawRoundedRect(
+                        QRectF(bx, plot_top + plot_h - bar_h, bar_w, bar_h), 2, 2
+                    )
+            if position % label_every == 0:
+                painter.setPen(text_color)
+                painter.setFont(small)
+                painter.drawText(
+                    QRectF(
+                        gx - group_gap / 2,
+                        plot_top + plot_h + 2,
+                        group_w + group_gap,
+                        label_h,
+                    ),
+                    Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+                    self._labels[index],
+                )
+        painter.end()
+
+
 # -------------------------------------------------------------- helpers
 
 

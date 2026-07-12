@@ -28,7 +28,7 @@ from app.schemas.statistics import (
     TopCustomer,
     TopProduct,
 )
-from app.services import customers, reports, statistics
+from app.services import customers, reports, statistics, stores
 from app.services import settings as settings_service
 from app.services.analysis import apriori, baskets
 
@@ -266,6 +266,49 @@ def report_pdf(store_id: UUID, date_from: date, date_to: date, db: DbDep):
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": 'inline; filename="rapport.pdf"'},
+    )
+
+
+@router.get("/daily-report.pdf", dependencies=[OwnerPinDep])
+def daily_report_pdf(store_id: UUID, date: date, db: DbDep):  # noqa: A002
+    """End-of-day A4 report for one calendar day (any past date)."""
+    store = stores.get_store(db, store_id)
+    if store is None:
+        raise NotFoundError("boutique", store_id)
+    store_settings = settings_service.get_settings(db, store_id)
+    pdf_bytes = reports.build_daily_report_pdf(
+        db, store_id, date, store, store_settings
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="rapport_journalier_{date}.pdf"'
+        },
+    )
+
+
+@router.get("/comparison-report.pdf", dependencies=[OwnerPinDep])
+def comparison_report_pdf(
+    store_id: UUID,
+    a_from: date,
+    a_to: date,
+    b_from: date,
+    b_to: date,
+    db: DbDep,
+):
+    """Two-period comparison report (metrics + top products) as a PDF."""
+    a_start, a_end = _day_bounds(a_from, a_to)
+    b_start, b_end = _day_bounds(b_from, b_to)
+    s = settings_service.get_settings(db, store_id)
+    lang = (s.ui_language or "fr") if s else "fr"
+    pdf_bytes = reports.build_comparison_report_pdf(
+        db, store_id, a_start, a_end, b_start, b_end, language=lang
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="comparaison.pdf"'},
     )
 
 

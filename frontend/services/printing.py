@@ -65,6 +65,17 @@ def print_pdf(path: Path, printer: str | None = None) -> None:
     logger.info("Receipt sent to printer | printer={}", printer or "(default)")
 
 
+def open_file(path: Path) -> None:
+    """Open a file in the OS default application (viewer), not the printer.
+
+    Used to *show* a generated PDF (clôture report, rapport journalier) rather
+    than send it straight to the printer."""
+    if os.name == "nt":
+        os.startfile(str(path))  # noqa: S606 (Windows default handler)
+    else:
+        subprocess.Popen(["xdg-open", str(path)])
+
+
 def write_test_pdf(path: Path, printer: str | None) -> None:
     """A minimal, self-contained test page (does not touch the backend)."""
     writer = QPdfWriter(str(path))

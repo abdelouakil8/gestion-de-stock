@@ -241,7 +241,7 @@ QSpinBox::down-arrow:disabled, QDoubleSpinBox::down-arrow:disabled {
 }
 
 /* Checkboxes / radios */
-QCheckBox, QRadioButton { background: transparent; spacing: 8px; }
+QCheckBox, QRadioButton { background: transparent; spacing: 8px; outline: none; }
 QCheckBox::indicator, QRadioButton::indicator { width: 18px; height: 18px; }
 QCheckBox::indicator {
     border: 1px solid $border_strong;
@@ -520,15 +520,37 @@ QLabel#ScreenTitle { font-size: $font_title; font-weight: 700; color: $text; }
 QLabel#DialogTitle { font-size: $font_lg; font-weight: 700; color: $text; }
 QLabel#FieldError { color: $danger_text; font-size: $font_sm; font-weight: 600; }
 QLabel#FieldHint { color: $text_muted; font-size: $font_sm; }
+
+/* ---- Modal dialogs: dark header band (sidebar feel) + soft body ---- */
 QDialog {
-    background: $surface;
+    background: $background;
     color: $text;
 }
 QDialog QLabel { background: transparent; color: $text; }
-QDialog > QWidget { background: transparent; }
-QDialog > QScrollArea { background: $surface; }
-QDialog > QScrollArea > QWidget { background: $surface; }
-QDialog > QScrollArea > QWidget > QWidget { background: $surface; }
+QDialog > QScrollArea { background: $background; border: none; }
+QDialog > QScrollArea > QWidget { background: $background; }
+QDialog > QScrollArea > QWidget > QWidget { background: $background; }
+/* Dialog header band — echoes the dark sidebar for a premium, integrated feel
+   instead of a stark white box floating over the window. */
+#DialogHeader {
+    background: $sidebar;
+    border-top-left-radius: $radius_lg;
+    border-top-right-radius: $radius_lg;
+}
+#DialogHeader QLabel {
+    background: transparent;
+    color: $text_on_dark;
+    font-size: $font_lg;
+    font-weight: 700;
+}
+/* The dialog body sits below the dark band on a soft (non-pure-white) surface
+   so inputs and labels read clearly while the dialog no longer clashes with
+   the main window's grey background. */
+#DialogBody {
+    background: $background;
+    border: none;
+}
+#DialogBody QLabel { background: transparent; color: $text; }
 QMessageBox QLabel { font-size: $font_base; }
 
 /* ---- Payment dialog: total band + selectable mode cards ---- */

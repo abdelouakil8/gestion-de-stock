@@ -76,6 +76,9 @@ class SaleRead(ReadSchema, SaleBase):
     paid_amount: Money
     balance: Money
     invoice_number: int | None = None
+    created_by_user_id: UUID | None = None
+    promo_code: str | None = None
+    promo_discount: Money = Decimal("0.00")
     items: list[SaleItemRead]
     payments: list[PaymentRead] = []
 
@@ -106,6 +109,10 @@ class CartItem(BaseModel):
     # stock by quantity * packaging.unit_count. None -> current behavior.
     packaging_id: UUID | None = None
     discount_amount: Money | None = None
+    # Per-line percentage discount (0–99). When set it is resolved server-side
+    # into the line discount amount (still floor-checked); takes precedence
+    # over a raw discount_amount on the same line.
+    discount_percent: int | None = Field(default=None, ge=0, le=99)
 
 
 class PaymentInfo(BaseModel):
@@ -126,6 +133,9 @@ class CheckoutRequest(BaseModel):
     store_id: UUID
     items: list[CartItem] = Field(min_length=1)
     payment: PaymentInfo = PaymentInfo()
+    # Optional coupon applied to the cart total (validated + consumed server
+    # side, atomically, inside the checkout transaction).
+    promo_code: str | None = Field(default=None, max_length=40)
 
 
 class OutstandingSale(BaseModel):

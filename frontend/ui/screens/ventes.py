@@ -155,10 +155,15 @@ class VentesScreen(QWidget):
         elif type_key == "confirmed":
             guest = "confirmed"
         date_from = self._date_from()
+        # A cashier only ever sees the sales they rang (role-scoped view).
+        own_only = None
+        if getattr(self.api, "role", None) == "cashier" and self.api.current_user:
+            own_only = self.api.current_user["id"]
         run_api(
             lambda: self.api.list_sales(
                 self.store_id,
                 guest=guest,
+                created_by_user_id=own_only,
                 date_from=date_from,
                 limit=_FETCH_LIMIT,
             ),

@@ -235,3 +235,24 @@ class BackupInvalidError(AppError):
             "Archive de sauvegarde invalide — le fichier est corrompu ou "
             "n'est pas un backup valide."
         )
+
+
+class DayAlreadyClosedError(AppError):
+    """A closing already exists for this store and calendar day."""
+
+    code = "day_already_closed"
+
+    def __init__(self, day: object) -> None:
+        super().__init__(
+            f"La caisse de la journée du {day} a déjà été clôturée.",
+            day=str(day),
+        )
+
+
+class PromotionInvalidError(AppError):
+    """A promo code is unknown, inactive, expired, or fully used."""
+
+    code = "promo_invalid"
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
