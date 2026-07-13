@@ -108,62 +108,63 @@ class FeatureTour(QWidget):
         self._callout.setFixedWidth(360)
 
     def _build_steps(self) -> list[_Step]:
-        # Sidebar order: 0 Caisse · 1 Stock · 2 Clients · 3 Ventes ·
-        #                4 Fournisseurs · 5 Statistiques · 6 Alertes · 7 Réglages
+        # Navigation targets are screen KEYS (MainWindow.navigate accepts
+        # them) and spotlight targets come from the key→button map, so the
+        # sidebar can be reordered without breaking the tour.
         return [
             _Step(strings.FEATURE_TOUR_WELCOME, strings.FEATURE_TOUR_WELCOME_DESC),
             _Step(
                 strings.FEATURE_TOUR_CHECKOUT_TITLE,
                 strings.FEATURE_TOUR_NAV_CAISSE_DESC,
-                navigate=lambda m: m.checkout,
-                target=lambda m: m._nav_buttons[0],
+                navigate=lambda m: "checkout",
+                target=lambda m: m._nav_by_key["checkout"],
             ),
             _Step(
                 strings.FEATURE_TOUR_SEARCH_TITLE,
                 strings.FEATURE_TOUR_SEARCH_DESC,
-                navigate=lambda m: m.checkout,
+                navigate=lambda m: "checkout",
                 target=lambda m: m.checkout.search,
             ),
             _Step(
                 strings.FEATURE_TOUR_PAY_TITLE,
                 strings.FEATURE_TOUR_PAY_DESC,
-                navigate=lambda m: m.checkout,
+                navigate=lambda m: "checkout",
                 target=lambda m: m.checkout.pay_button,
             ),
             _Step(
                 strings.FEATURE_TOUR_INVENTORY_TITLE,
                 strings.FEATURE_TOUR_INVENTORY_DESC,
-                navigate=lambda m: m.inventory,
-                target=lambda m: m._nav_buttons[1],
+                navigate=lambda m: "inventory",
+                target=lambda m: m._nav_by_key["inventory"],
             ),
             _Step(
                 strings.FEATURE_TOUR_CUSTOMERS_TITLE,
                 strings.FEATURE_TOUR_CUSTOMERS_DESC,
-                navigate=lambda m: m.customers,
-                target=lambda m: m._nav_buttons[2],
+                navigate=lambda m: "customers",
+                target=lambda m: m._nav_by_key["customers"],
             ),
             _Step(
                 strings.FEATURE_TOUR_STATS_TITLE,
                 strings.FEATURE_TOUR_STATS_DESC,
-                navigate=lambda m: m.statistics,
-                target=lambda m: m._nav_buttons[5],
+                navigate=lambda m: "statistics",
+                target=lambda m: m._nav_by_key["statistics"],
             ),
             _Step(
                 strings.FEATURE_TOUR_ALERTS_TITLE,
                 strings.FEATURE_TOUR_ALERTS_DESC,
-                navigate=lambda m: m.alerts,
-                target=lambda m: m._nav_buttons[6],
+                navigate=lambda m: "alerts",
+                target=lambda m: m._nav_by_key["alerts"],
             ),
             _Step(
                 strings.FEATURE_TOUR_SETTINGS_TITLE,
                 strings.FEATURE_TOUR_SETTINGS_DESC,
-                navigate=lambda m: m.settings_screen,
-                target=lambda m: m._nav_buttons[7],
+                navigate=lambda m: "settings",
+                target=lambda m: m._nav_by_key["settings"],
             ),
             _Step(
                 strings.FEATURE_TOUR_DONE_TITLE,
                 strings.FEATURE_TOUR_DONE_DESC,
-                navigate=lambda m: m.checkout,
+                navigate=lambda m: "checkout",
             ),
         ]
 
@@ -197,7 +198,7 @@ class FeatureTour(QWidget):
     def _render_current(self) -> None:
         step = self._steps[self._index]
         if step.navigate is not None:
-            screen = step.navigate(self._main)
+            screen = step.navigate(self._main)  # a screen key (or None)
             if screen is not None:
                 self._main.navigate(screen)
         # Give the just-navigated screen a beat to lay out before we measure
@@ -324,7 +325,7 @@ class FeatureTourDialog:
 
     def exec(self) -> int:
         window = self._parent.window() if self._parent is not None else None
-        if window is None or not hasattr(window, "_nav_buttons"):
+        if window is None or not hasattr(window, "_nav_by_key"):
             return 0
         tour = FeatureTour(window)
         window._feature_tour = tour  # keep a reference alive during the tour

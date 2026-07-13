@@ -1,12 +1,4 @@
-"""Checkout screen — keyboard-first cashier flow, rebuilt for price levels.
-
-Scan (keyboard-wedge) or type in the search box; Enter adds to the cart.
-Each cart line carries a 3-state price-level selector (Détail / Gros /
-Super gros): the UI shows the level's price from the product data for
-instant feedback, but the SERVER resolves and enforces the real price at
-checkout — the client never sends prices. F12 opens the payment dialog
-(full / partial with customer), then prints the receipt.
-"""
+"""Checkout screen — keyboard-first cashier flow, rebuilt for price levels."""
 
 import tempfile
 from datetime import date, datetime
@@ -40,7 +32,6 @@ from services.workers import run_api
 from ui import format as fmt
 from ui import strings
 from ui.styles.tokens import ICON_SIZES, NEUTRAL, SPACING
-from ui.widgets.badge import Badge
 from ui.widgets.customer_search import CustomerSearchBox
 from ui.widgets.day_closing_dialog import DayClosingDialog
 from ui.widgets.modal import ask_confirm, show_error
@@ -50,125 +41,18 @@ from ui.widgets.states import EmptyState
 from ui.widgets.thumb import Thumb
 from ui.widgets.toast import show_toast
 
+from ._cart import (
+    _CART_THUMB,
+    _CELL_CONTROL_H,
+    _PRICE_FIELDS,
+    _RESULT_THUMB,
+    CartLine,
+    _centered_cell,
+    _ResultRow,
+)
+
 _CLOSING_ORG = "GestionStockPOS"
 _CLOSING_APP = "GestionStockPOS"
-
-_PRICE_FIELDS = {
-    "detail": "price_detail",
-    "gros": "price_gros",
-    "super_gros": "price_super_gros",
-}
-
-# One control height for every editable cell so a cart row reads as a single
-# aligned band instead of a jumble of differently-sized widgets.
-_CELL_CONTROL_H = 34
-# Thumbnails: larger in the search pop-up (operator needs to identify
-# the product at a glance) than in the dense cart table.
-_RESULT_THUMB = 60
-_CART_THUMB = 44
-
-
-def _centered_cell(widget: QWidget, left: int = 3, right: int = 3) -> QWidget:
-    """Wrap a control so the table centers it vertically in the (taller) row
-    instead of stretching it to the full cell height. A control with an
-    Expanding horizontal policy also fills the cell width (auto-sizes to the
-    column) instead of shrinking to its content."""
-    holder = QWidget()
-    layout = QHBoxLayout(holder)
-    layout.setContentsMargins(left, 0, right, 0)
-    layout.setSpacing(0)
-    layout.addWidget(widget)
-    return holder
-
-
-class CartLine:
-    def __init__(self, product: dict) -> None:
-        self.product = product
-        # None = the product's base unit ("Unité"); otherwise a packaging dict
-        # with its own price triplet and unit_count.
-        self.packaging: dict | None = None
-        self.quantity = 1
-        self.level = "detail"
-        # Set only when the cashier types a price (level == "manual"); the
-        # server re-checks it against the floor.
-        self.manual_price: Decimal | None = None
-        # Per-line percentage discount (0–99). The server re-derives the amount
-        # and re-checks the price floor.
-        self.discount_percent = 0
-
-    def _price_source(self) -> dict:
-        return self.packaging if self.packaging else self.product
-
-    @property
-    def unit_price(self) -> Decimal:
-        """Display-only mirror of the server rule: the resolved unit price."""
-        if self.level == "manual" and self.manual_price is not None:
-            return self.manual_price
-        field = _PRICE_FIELDS.get(self.level, "price_detail")
-        return Decimal(self._price_source()[field])
-
-    @property
-    def discount_amount(self) -> Decimal:
-        gross = self.unit_price * self.quantity
-        return (gross * Decimal(self.discount_percent) / 100).quantize(Decimal("0.01"))
-
-    @property
-    def total(self) -> Decimal:
-        gross = self.unit_price * self.quantity
-        return (gross - self.discount_amount).quantize(Decimal("0.01"))
-
-    @property
-    def base_units(self) -> int:
-        """Stock units consumed = quantity × the packaging's unit_count."""
-        unit_count = self.packaging["unit_count"] if self.packaging else 1
-        return self.quantity * unit_count
-
-
-class _ResultRow(QWidget):
-    """Search result: thumbnail, name, stock badge, the three prices."""
-
-    def __init__(self, product: dict) -> None:
-        super().__init__()
-        layout = QHBoxLayout(self)
-        sm = SPACING["sm"]
-        layout.setContentsMargins(sm, sm, SPACING["md"], sm)
-        layout.setSpacing(SPACING["md"])
-
-        thumb = Thumb(_RESULT_THUMB)
-        thumb.set_product(product)
-        layout.addWidget(thumb)
-
-        info = QVBoxLayout()
-        info.setSpacing(2)
-        info.setContentsMargins(0, 0, 0, 0)
-        name = QLabel(product["name"])
-        name.setStyleSheet(
-            "font-weight: 600; font-size: 14px; background: transparent;"
-        )
-        info.addWidget(name)
-
-        prices = QLabel(
-            f"{strings.PRICE_DETAIL} {fmt.fmt_money(product['price_detail'])}"
-            f"  ·  {strings.PRICE_GROS} {fmt.fmt_money(product['price_gros'])}"
-            f"  ·  {strings.PRICE_SUPER_GROS} "
-            f"{fmt.fmt_money(product['price_super_gros'])}"
-        )
-        prices.setObjectName("Muted")
-        info.addWidget(prices)
-        layout.addLayout(info, stretch=1)
-
-        stock = product["stock_quantity"]
-        if stock <= 0:
-            stock_badge = Badge(strings.CHECKOUT_OUT_OF_STOCK, "danger")
-        elif stock <= product.get("low_stock_threshold", 5):
-            stock_badge = Badge(
-                strings.CHECKOUT_STOCK_BADGE.format(count=stock), "warning"
-            )
-        else:
-            stock_badge = Badge(
-                strings.CHECKOUT_STOCK_BADGE.format(count=stock), "success"
-            )
-        layout.addWidget(stock_badge, alignment=Qt.AlignmentFlag.AlignVCenter)
 
 
 class CheckoutScreen(QWidget):
@@ -178,13 +62,8 @@ class CheckoutScreen(QWidget):
         self.store_id = store_id
         self.cart: list[CartLine] = []
         self.customer: dict | None = None
-        # Suspended carts (park & recall). Each entry is a snapshot dict.
         self._parked_sales: list[dict] = []
-        # Price level auto-applied to new lines while a "habitual" customer is
-        # attached (None = each line keeps its own default).
         self._preferred_level: str | None = None
-        # Applied promo code (the validate response: code/type/value); the
-        # discount is recomputed live from it and re-checked server-side.
         self._promo: dict | None = None
 
         layout = QVBoxLayout(self)
@@ -196,12 +75,10 @@ class CheckoutScreen(QWidget):
         title.setObjectName("ScreenTitle")
         header.addWidget(title)
         header.addStretch(1)
-        # Customer attachment strip (anonymous by default).
         header.addWidget(QLabel(strings.CHECKOUT_CUSTOMER_LABEL))
         self.customer_label = QLabel(strings.CHECKOUT_CUSTOMER_ANONYMOUS)
         self.customer_label.setObjectName("Secondary")
         header.addWidget(self.customer_label)
-        # Inline search-and-attach box (replaces the picker dialog button).
         self.customer_search = CustomerSearchBox(
             self.api, self.store_id, self._on_customer_attached
         )
@@ -216,8 +93,6 @@ class CheckoutScreen(QWidget):
         self.clear_customer_button.hide()
         header.addWidget(self.clear_customer_button)
 
-        # Clôture de caisse — daily reconciliation (owner, PIN-gated). Enabled
-        # only once a sale exists today, disabled again after the day is closed.
         self.close_day_button = QPushButton(
             qta.icon("fa5s.cash-register", color=NEUTRAL["600"]),
             strings.CHECKOUT_CLOSE_DAY,
@@ -228,8 +103,6 @@ class CheckoutScreen(QWidget):
         header.addWidget(self.close_day_button)
         layout.addLayout(header)
 
-        # Outstanding-balance warning — prominent, directly under the customer
-        # strip so it is always visible without scrolling.
         self.balance_warning = QLabel("")
         self.balance_warning.setObjectName("BalanceWarning")
         self.balance_warning.setWordWrap(True)
@@ -243,8 +116,6 @@ class CheckoutScreen(QWidget):
         self.search.returnPressed.connect(self._on_enter)
         layout.addWidget(self.search)
 
-        # Debounced live product search (250 ms); the Enter/barcode fast path
-        # below is never debounced so the scanner stays instant.
         self._search_debounce = QTimer(self)
         self._search_debounce.setSingleShot(True)
         self._search_debounce.setInterval(250)
@@ -255,7 +126,6 @@ class CheckoutScreen(QWidget):
         self.results.hide()
         layout.addWidget(self.results)
 
-        # Cart: table page + designed empty page.
         self.table = QTableWidget(0, 8)
         self.table.setHorizontalHeaderLabels(
             [
@@ -269,26 +139,22 @@ class CheckoutScreen(QWidget):
                 strings.CHECKOUT_COL_REMOVE,
             ]
         )
-        # Responsive: the product column absorbs all remaining width so the
-        # cart ALWAYS fits the viewport — no horizontal scrolling on any
-        # screen size or DPI scale (everything visible on one page).
         from PySide6.QtWidgets import QHeaderView
 
         header = self.table.horizontalHeader()
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for column, width in (
-            (1, 112),  # Conditionnement ("Carton (×24)")
-            (2, 138),  # Niveau de prix — a select (shows full "Super gros")
-            (3, 124),  # Prix unitaire — enlarged
-            (4, 112),  # Qté — enlarged, clean editable number field
-            (5, 100),  # Remise
-            (6, 112),  # Total
-            (7, 44),  # remove
+            (1, 112),
+            (2, 138),
+            (3, 124),
+            (4, 112),
+            (5, 100),
+            (6, 112),
+            (7, 44),
         ):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
             self.table.setColumnWidth(column, width)
-        # Every numeric header aligns right, matching its right-aligned values.
         for column in (3, 4, 5, 6):
             item = self.table.horizontalHeaderItem(column)
             if item is not None:
@@ -299,7 +165,6 @@ class CheckoutScreen(QWidget):
         self.table.verticalHeader().setDefaultSectionSize(_CART_THUMB + 6)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
-        # Same table language as every DataTable: no grid, alternating rows.
         self.table.setShowGrid(False)
         self.table.setAlternatingRowColors(True)
 
@@ -313,7 +178,6 @@ class CheckoutScreen(QWidget):
         self.cart_stack.addWidget(self.table)
         layout.addWidget(self.cart_stack, stretch=1)
 
-        # Promo code row — validate a coupon and preview its discount.
         promo_row = QHBoxLayout()
         promo_caption = QLabel(strings.CHECKOUT_PROMO_LABEL)
         promo_caption.setObjectName("Caption")
@@ -340,7 +204,6 @@ class CheckoutScreen(QWidget):
         layout.addLayout(promo_row)
 
         footer = QHBoxLayout()
-        # Park & recall controls (left side of the caisse action bar).
         self.suspend_button = QPushButton(
             qta.icon("fa5s.pause", color=NEUTRAL["600"]), strings.CHECKOUT_SUSPEND
         )
@@ -370,7 +233,7 @@ class CheckoutScreen(QWidget):
         self.pay_button.setObjectName("Pay")
         self.pay_button.setIconSize(QSize(ICON_SIZES["lg"], ICON_SIZES["lg"]))
         self.pay_button.clicked.connect(self._checkout)
-        self.pay_button.setEnabled(False)  # empty cart: visibly disabled
+        self.pay_button.setEnabled(False)
         footer.addWidget(self.pay_button)
         layout.addLayout(footer)
 
@@ -382,8 +245,6 @@ class CheckoutScreen(QWidget):
         self._refresh_close_button()
 
     def showEvent(self, event) -> None:
-        # Re-evaluate the clôture button whenever the caisse is shown (the day
-        # may have rolled over, or sales may have happened elsewhere).
         super().showEvent(event)
         self._refresh_close_button()
 
@@ -404,11 +265,7 @@ class CheckoutScreen(QWidget):
         self._refresh_customer_strip()
         self.search.setFocus()
 
-    # ----------------------------------------------- customer balance / tarif
-
     def _apply_customer_pricing(self, customer: dict) -> None:
-        """Auto-apply the customer's habitual price level to the whole cart
-        and to lines added while they stay attached."""
         level = customer.get("default_price_level")
         if not level or level not in _PRICE_FIELDS:
             self._preferred_level = None
@@ -433,7 +290,6 @@ class CheckoutScreen(QWidget):
     def _on_customer_balance(self, customer: dict, stats: object) -> None:
         if not shiboken6.isValid(self):
             return
-        # The attached customer may have changed while the stats were loading.
         if self.customer is None or str(self.customer.get("id")) != str(
             customer.get("id")
         ):
@@ -471,7 +327,6 @@ class CheckoutScreen(QWidget):
     # ------------------------------------------------------------ products
 
     def _on_search_text_changed(self, text: str) -> None:
-        """Debounce live search; empty text hides the results list."""
         if not text.strip():
             self._search_debounce.stop()
             self.results.clear()
@@ -495,8 +350,7 @@ class CheckoutScreen(QWidget):
 
     def _show_results(self, query: str, products: object) -> None:
         if not shiboken6.isValid(self):
-            return  # screen torn down while a search was in flight
-        # A newer keystroke may have superseded this in-flight search.
+            return
         if query != self.search.text().strip():
             return
         self.results.clear()
@@ -509,15 +363,12 @@ class CheckoutScreen(QWidget):
             self.results.addItem(item)
             self.results.setItemWidget(item, row)
         if matches:
-            # Size the list to exactly fit its items — no blank space below
-            # the last row, no scrollbar for small result sets (up to 5 rows).
-            row_h = _RESULT_THUMB + SPACING["sm"] * 2  # thumb + top+bottom margins
+            row_h = _RESULT_THUMB + SPACING["sm"] * 2
             visible = min(len(matches), 5)
             self.results.setFixedHeight(row_h * visible + 10)
         self.results.setVisible(bool(matches))
 
     def _shown_products(self) -> list[dict]:
-        """Products currently rendered in the results list."""
         products = []
         for i in range(self.results.count()):
             data = self.results.item(i).data(Qt.ItemDataRole.UserRole)
@@ -531,12 +382,10 @@ class CheckoutScreen(QWidget):
         query = self.search.text().strip()
         if not query:
             return
-        # 1) exact barcode among the currently shown results (fast path)
         for product in self._shown_products():
             if product.get("barcode") == query:
                 self._add_to_cart(product)
                 return
-        # 2) authoritative barcode lookup (scanner path — never debounced)
         run_api(
             lambda: self.api.get_product_by_barcode(self.store_id, query),
             self._add_to_cart,
@@ -544,7 +393,6 @@ class CheckoutScreen(QWidget):
         )
 
     def _on_barcode_miss(self, query: str) -> None:
-        # No exact barcode: fall back to the first visible search result.
         if self.results.count() > 0:
             self._on_result_chosen(self.results.item(0))
             return
@@ -595,11 +443,10 @@ class CheckoutScreen(QWidget):
             cell_layout.addWidget(thumb)
             name = QLabel(line.product["name"])
             name.setStyleSheet("font-weight: 600; background: transparent;")
-            name.setToolTip(line.product["name"])  # full name if the cell clips
+            name.setToolTip(line.product["name"])
             cell_layout.addWidget(name, stretch=1)
             self.table.setCellWidget(row, 0, product_cell)
 
-            # Conditionnement: "Unité" + one entry per packaging.
             packaging_combo = QComboBox()
             packaging_combo.addItem(strings.PACKAGING_UNIT, None)
             for packaging in line.product.get("packagings") or []:
@@ -620,10 +467,6 @@ class CheckoutScreen(QWidget):
             packaging_combo.setFixedHeight(_CELL_CONTROL_H)
             self.table.setCellWidget(row, 1, _centered_cell(packaging_combo))
 
-            # Price level as a clean select: Détail / Gros / Super gros /
-            # Manuel. A dropdown shows the full label (no clipping) and stays
-            # compact. Set the current index BEFORE connecting so seeding it
-            # never fires the change handler.
             level_combo = QComboBox()
             for value in ("detail", "gros", "super_gros"):
                 level_combo.addItem(strings.PRICE_LEVEL_LABELS[value], value)
@@ -643,10 +486,6 @@ class CheckoutScreen(QWidget):
             )
             self.table.setCellWidget(row, 2, _centered_cell(level_combo))
 
-            # Editable price cell — read-only for named levels, editable for
-            # "Manuel" (the "type the price by hand" path). Server floor-checks.
-            # Price: a clean number field (no spinner arrows — the price is
-            # typed / resolved), read-only for named levels, editable in Manuel.
             price_spin = QDoubleSpinBox()
             price_spin.setDecimals(2)
             price_spin.setMaximum(99_999_999.99)
@@ -661,13 +500,10 @@ class CheckoutScreen(QWidget):
             price_spin.valueChanged.connect(
                 lambda value, target=line: self._on_manual_price_changed(target, value)
             )
-            line._price_spin = price_spin  # noqa: SLF001 (per-line cell handle)
+            line._price_spin = price_spin  # noqa: SLF001
             self.table.setCellWidget(row, 3, _centered_cell(price_spin))
             self._sync_price_cell(line)
 
-            # Quantity: a clean editable number field (no cramped arrows) that
-            # fills its column — the operator types any quantity and clearly
-            # sees it. Consistent with the price/discount fields.
             qty = QSpinBox()
             qty.setRange(1, 1_000_000)
             qty.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
@@ -682,8 +518,6 @@ class CheckoutScreen(QWidget):
             )
             self.table.setCellWidget(row, 4, _centered_cell(qty))
 
-            # Discount: a percentage (0–99 %) — the server re-derives the amount
-            # and re-checks the price floor.
             discount_spin = QSpinBox()
             discount_spin.setRange(0, 99)
             discount_spin.setSuffix(" %")
@@ -724,7 +558,6 @@ class CheckoutScreen(QWidget):
     def _refresh_totals(self) -> None:
         self.total_label.setText(fmt.fmt_money(self._cart_total()))
         self.pay_button.setEnabled(bool(self.cart))
-        # Keep the applied-promo line in sync with the live cart.
         if self._promo is not None:
             discount = self._promo_discount_for(self._cart_subtotal())
             self.promo_label.setText(
@@ -735,27 +568,18 @@ class CheckoutScreen(QWidget):
             )
 
     def _sync_price_cell(self, line: CartLine) -> None:
-        """Set the price spin's value + editability from the line's state.
-
-        Programmatic value changes are blocked so they never fire the manual
-        handler. In manual mode the spin is editable; otherwise it displays
-        the server-resolved price read-only.
-        """
         spin = getattr(line, "_price_spin", None)
         if spin is None:
             return
         manual = line.level == "manual"
         spin.blockSignals(True)
         spin.setReadOnly(not manual)
-        # No spinner arrows in either mode — a clean number field. In Manuel it
-        # is editable (type the price); otherwise it shows the resolved price.
         spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
         spin.setValue(float(line.unit_price))
         spin.setToolTip(strings.CHECKOUT_MANUAL_PRICE_TIP if manual else "")
         spin.blockSignals(False)
 
     def _update_line_cells(self, line: CartLine) -> None:
-        """Refresh price/total cells in place (keeps widget focus)."""
         self._sync_price_cell(line)
         for row, cart_line in enumerate(self.cart):
             if cart_line is line:
@@ -772,14 +596,12 @@ class CheckoutScreen(QWidget):
 
     def _on_packaging_changed(self, line: CartLine, packaging: object) -> None:
         line.packaging = packaging if isinstance(packaging, dict) else None
-        line.manual_price = None  # price source changed — drop any manual value
+        line.manual_price = None
         self._update_line_cells(line)
 
     def _on_level_changed(self, line: CartLine, level: str) -> None:
         line.level = level
         if level == "manual" and line.manual_price is None:
-            # Seed the manual price with the last resolved price so it is
-            # immediately valid and the cashier just tweaks it.
             field = _PRICE_FIELDS["detail"]
             line.manual_price = Decimal(line._price_source()[field])
         elif level != "manual":
@@ -814,7 +636,6 @@ class CheckoutScreen(QWidget):
         show_toast(self, strings.CHECKOUT_SUSPENDED_TOAST)
 
     def _park_current(self) -> None:
-        """Snapshot the current cart, append it to the parked list, clear."""
         self._parked_sales.append(self._snapshot_cart())
         self.cart.clear()
         self.customer = None
@@ -850,8 +671,6 @@ class CheckoutScreen(QWidget):
     def _resume_sale(self) -> None:
         if not self._parked_sales:
             return
-        # A non-empty cart is parked first (with the operator's confirmation)
-        # so no work is lost when recalling another ticket.
         if self.cart:
             if not ask_confirm(self, strings.CHECKOUT_RESUME_CONFIRM):
                 return
@@ -921,7 +740,6 @@ class CheckoutScreen(QWidget):
         return sum((line.total for line in self.cart), Decimal("0.00"))
 
     def _promo_discount_for(self, subtotal: Decimal) -> Decimal:
-        """Live coupon discount for a subtotal (server stays authoritative)."""
         if not self._promo:
             return Decimal("0.00")
         value = Decimal(str(self._promo.get("value", "0")))
@@ -934,8 +752,6 @@ class CheckoutScreen(QWidget):
     def _cart_total(self) -> Decimal:
         subtotal = self._cart_subtotal()
         return (subtotal - self._promo_discount_for(subtotal)).quantize(Decimal("0.01"))
-
-    # ------------------------------------------------------------- promo code
 
     def _apply_promo(self) -> None:
         code = self.promo_input.text().strip()
@@ -977,13 +793,9 @@ class CheckoutScreen(QWidget):
         self._refresh_totals()
 
     def _line_payload(self, line: CartLine) -> dict:
-        """Server payload for one cart line — never a price, only a level and
-        (optionally) a manual override and packaging id."""
         payload = {
             "product_id": line.product["id"],
             "quantity": line.quantity,
-            # A manual line still needs a valid level enum server-side; the
-            # override takes precedence over it for the actual price.
             "price_level": line.level if line.level != "manual" else "detail",
         }
         if line.packaging:
@@ -1028,14 +840,13 @@ class CheckoutScreen(QWidget):
         self._hide_balance_warning()
         self._refresh_customer_strip()
         self._rebuild_table()
-        # Stock changed: drop any stale search results (search is server-side).
         self.search.clear()
         self.results.clear()
         self.results.hide()
         window = self.window()
         if hasattr(window, "refresh_alerts_badge"):
-            window.refresh_alerts_badge()  # a credit sale may add an alert
-        self._refresh_close_button()  # first sale of the day enables clôture
+            window.refresh_alerts_badge()
+        self._refresh_close_button()
         self.search.setFocus()
         show_toast(self, strings.CHECKOUT_DONE_TOAST)
         run_api(
@@ -1051,7 +862,6 @@ class CheckoutScreen(QWidget):
     def _print_receipt(
         self, sale: dict, pdf: bytes, payment: dict, customer_name: str | None
     ) -> None:
-        """Save the PDF and send it to the configured printer (Réglages)."""
         from services import escpos_printer, printing
 
         printer_name = printing.get_selected_printer()
@@ -1067,7 +877,12 @@ class CheckoutScreen(QWidget):
         )
 
         if printer_name and escpos_printer.print_receipt_escpos(
-            sale, printer_name, settings, store_name, customer_name, payment["method"]
+            sale,
+            printer_name,
+            settings,
+            store_name,
+            customer_name,
+            payment.get("payment_method", "cash"),
         ):
             return
 
@@ -1079,16 +894,13 @@ class CheckoutScreen(QWidget):
             logger.warning("Receipt print failed: {}", exc)
             show_error(self, strings.RECEIPT_PRINT_FAILED.format(path=path))
 
-    # -------------------------------------------------- clôture de caisse
+    # -------------------------------------------------- cloture de caisse
 
     def _closed_today(self) -> bool:
-        """True if this store's caisse was already closed today (local flag)."""
         settings = QSettings(_CLOSING_ORG, _CLOSING_APP)
         return settings.value(f"day_closed_{self.store_id}") == date.today().isoformat()
 
     def _refresh_close_button(self) -> None:
-        """Disable + relabel when already closed today; otherwise enable only
-        once at least one sale exists today."""
         if self._closed_today():
             self.close_day_button.setEnabled(False)
             self.close_day_button.setText(strings.CHECKOUT_CLOSE_DONE)
@@ -1097,7 +909,7 @@ class CheckoutScreen(QWidget):
         run_api(
             lambda: self.api.get_day_summary(self.store_id, date.today().isoformat()),
             self._on_close_summary,
-            lambda err: None,  # best-effort; the button just stays disabled
+            lambda err: None,
         )
 
     def _on_close_summary(self, summary: object) -> None:

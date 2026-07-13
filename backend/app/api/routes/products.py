@@ -7,7 +7,6 @@ from app.api.deps import DbDep, ManagerDep
 from app.core.exceptions import NotFoundError
 from app.models.stock_movement import MovementType
 from app.schemas.product import (
-    LabelGenerateRequest,
     ProductCreate,
     ProductRead,
     ProductReadWithCost,
@@ -22,7 +21,6 @@ from app.services import (
     images,
     import_export,
     inventory,
-    labels,
     products,
     stock_movements,
 )
@@ -85,20 +83,6 @@ def list_all_movements(
     )
     return {"items": items, "total": total}
 
-
-@router.post("/labels/generate", dependencies=[ManagerDep])
-def generate_labels(
-    store_id: UUID, payload: LabelGenerateRequest, db: DbDep
-) -> Response:
-    """Render the selected products as an A4 sheet of barcode labels (PDF)."""
-    pdf = labels.build_labels_pdf(
-        db, store_id, payload.product_ids, payload.label_config.model_dump()
-    )
-    return Response(
-        content=pdf,
-        media_type="application/pdf",
-        headers={"Content-Disposition": 'inline; filename="etiquettes.pdf"'},
-    )
 
 
 @router.get("/{product_id}", response_model=ProductRead)

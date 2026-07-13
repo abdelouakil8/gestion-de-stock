@@ -204,3 +204,52 @@ class FinancialSnapshot(BaseModel):
     customer_credit_count: int
     supplier_debt_total: Decimal  # money we still owe suppliers
     supplier_debt_count: int
+
+
+# ---------------------------------------- Phase 5: profitability & velocity
+
+
+class ProductProfitability(BaseModel):
+    product_id: UUID
+    name: str
+    category_name: str | None = None
+    revenue: Decimal
+    cost: Decimal
+    profit: Decimal
+    margin_pct: float
+    contribution_pct: float
+
+
+class MarginTier(BaseModel):
+    tier: str
+    product_count: int
+    revenue: Decimal
+    profit: Decimal
+
+
+class MarginAnalysis(BaseModel):
+    blended_margin_pct: float
+    tiers: list[MarginTier]
+
+
+class ProductVelocity(BaseModel):
+    product_id: UUID
+    name: str
+    category_name: str | None = None
+    units_sold: int
+    velocity: float
+    stock_quantity: int
+    days_of_stock: float | None = None
+
+
+class CategoryTurnover(BaseModel):
+    category_id: UUID | None = None
+    name: str | None = None
+    turnover: float
+    units_sold: int
+    avg_stock_value: Decimal
+
+
+class StockTurnover(BaseModel):
+    overall_turnover: float
+    categories: list[CategoryTurnover]

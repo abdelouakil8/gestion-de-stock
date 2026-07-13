@@ -34,8 +34,6 @@ from ui.screens.creances import CreancesScreen
 from ui.screens.customers import CustomersScreen
 from ui.screens.dashboard import DashboardScreen
 from ui.screens.inventory import InventoryScreen
-from ui.screens.label_printing import LabelPrintingScreen
-from ui.screens.reservations import ReservationsScreen
 from ui.screens.settings_screen import SettingsScreen
 from ui.screens.statistics import StatisticsScreen
 from ui.screens.suppliers import SuppliersScreen
@@ -251,29 +249,34 @@ class MainWindow(QMainWindow):
         section.setContentsMargins(SPACING["sm"], 0, SPACING["sm"], SPACING["xs"])
         nav.addWidget(section)
 
+        # LAZY screens: nothing heavy is built here. Each screen is created
+        # the FIRST time the operator opens it, so the window appears right
+        # after the PIN instead of paying for all twelve screens up front.
         self.stack = QStackedWidget()
-        self.checkout = CheckoutScreen(api, store["id"])
-        self.inventory = InventoryScreen(api, store["id"])
-        self.customers = CustomersScreen(api, store["id"])
-        self.ventes = VentesScreen(
-            api, store["id"], on_view_product=self._open_product_from_alert
-        )
-        self.creances = CreancesScreen(api, store["id"])
-        self.reservations = ReservationsScreen(api, store["id"])
-        self.label_printing = LabelPrintingScreen(api, store["id"])
-        self.statistics = StatisticsScreen(api, store["id"])
-        self.suppliers_screen = SuppliersScreen(api, store["id"])
-        self.alerts = AlertsScreen(
-            api,
-            store["id"],
-            self._open_product_from_alert,
-            self._open_purchase_from_alert,
-        )
-        self.settings_screen = SettingsScreen(api, store)
-        # Dashboard is the home screen; its low-stock card jumps to Alertes.
-        self.dashboard = DashboardScreen(
-            api, store["id"], on_open_alerts=lambda: self.navigate(self.alerts)
-        )
+        self._screens: dict[str, QWidget] = {}
+        self._factories = {
+            "dashboard": lambda: DashboardScreen(
+                api,
+                store["id"],
+                on_open_alerts=lambda: self.navigate("alerts"),
+            ),
+            "checkout": lambda: CheckoutScreen(api, store["id"]),
+            "inventory": lambda: InventoryScreen(api, store["id"]),
+            "customers": lambda: CustomersScreen(api, store["id"]),
+            "ventes": lambda: VentesScreen(
+                api, store["id"], on_view_product=self._open_product_from_alert
+            ),
+            "creances": lambda: CreancesScreen(api, store["id"]),
+            "statistics": lambda: StatisticsScreen(api, store["id"]),
+            "suppliers": lambda: SuppliersScreen(api, store["id"]),
+            "alerts": lambda: AlertsScreen(
+                api,
+                store["id"],
+                self._open_product_from_alert,
+                self._open_purchase_from_alert,
+            ),
+            "settings": lambda: SettingsScreen(api, store),
+        }
 
         # Role-gated navigation. Each item declares the minimum role that may
         # see it; visibility is monotonic (cashier ⊂ manager ⊂ owner):
@@ -283,31 +286,26 @@ class MainWindow(QMainWindow):
         role = self.api.role or "owner"
         rank = _ROLE_RANK.get(role, _ROLE_RANK["owner"])
 
-        self._nav_buttons: list[NavButton] = []
-        for icon_name, label, screen, min_role in [
-            ("fa5s.tachometer-alt", strings.NAV_DASHBOARD, self.dashboard, "manager"),
-            ("fa5s.cash-register", strings.NAV_CHECKOUT, self.checkout, "cashier"),
-            ("fa5s.boxes", strings.NAV_INVENTORY, self.inventory, "manager"),
-            ("fa5s.users", strings.NAV_CUSTOMERS, self.customers, "manager"),
-            ("fa5s.receipt", strings.NAV_SALES, self.ventes, "cashier"),
-            ("fa5s.hand-holding-usd", strings.NAV_CREANCES, self.creances, "manager"),
-            ("fa5s.bookmark", strings.NAV_RESERVATIONS, self.reservations, "manager"),
-            ("fa5s.tag", strings.NAV_LABELS, self.label_printing, "manager"),
-            ("fa5s.truck", strings.NAV_PURCHASES, self.suppliers_screen, "manager"),
-            ("fa5s.chart-line", strings.NAV_STATISTICS, self.statistics, "owner"),
-            ("fa5s.bell", strings.NAV_ALERTS, self.alerts, "manager"),
-            ("fa5s.cog", strings.NAV_SETTINGS, self.settings_screen, "owner"),
+        self._nav_by_key: dict[str, NavButton] = {}
+        for icon_name, label, key, min_role in [
+            ("fa5s.tachometer-alt", strings.NAV_DASHBOARD, "dashboard", "manager"),
+            ("fa5s.cash-register", strings.NAV_CHECKOUT, "checkout", "cashier"),
+            ("fa5s.boxes", strings.NAV_INVENTORY, "inventory", "manager"),
+            ("fa5s.users", strings.NAV_CUSTOMERS, "customers", "manager"),
+            ("fa5s.receipt", strings.NAV_SALES, "ventes", "cashier"),
+            ("fa5s.hand-holding-usd", strings.NAV_CREANCES, "creances", "manager"),
+            ("fa5s.truck", strings.NAV_PURCHASES, "suppliers", "manager"),
+            ("fa5s.chart-line", strings.NAV_STATISTICS, "statistics", "owner"),
+            ("fa5s.bell", strings.NAV_ALERTS, "alerts", "manager"),
+            ("fa5s.cog", strings.NAV_SETTINGS, "settings", "owner"),
         ]:
-            self.stack.addWidget(screen)
             button = NavButton(icon_name, label)
-            button.clicked.connect(lambda _, s=screen: self.navigate(s))
+            button.clicked.connect(lambda _, k=key: self.navigate(k))
             button.setVisible(rank >= _ROLE_RANK[min_role])
             nav.addWidget(button)
-            self._nav_buttons.append(button)
-            # Track the Alertes item by reference (its live badge is updated
-            # by the poll) so the nav order can change without a magic index.
-            if screen is self.alerts:
-                self.alerts_nav = button
+            self._nav_by_key[key] = button
+        # The Alertes item carries the live badge updated by the poll.
+        self.alerts_nav = self._nav_by_key["alerts"]
         nav.addStretch(1)
 
         body.addWidget(sidebar)
@@ -317,7 +315,7 @@ class MainWindow(QMainWindow):
         # Landing screen: the dashboard for manager/owner, the caisse for a
         # cashier (who cannot see the dashboard).
         self._default_screen = (
-            self.dashboard if rank >= _ROLE_RANK["manager"] else self.checkout
+            "dashboard" if rank >= _ROLE_RANK["manager"] else "checkout"
         )
 
         # Resize grip OVERLAYED in the end corner — a dedicated layout row
@@ -378,25 +376,86 @@ class MainWindow(QMainWindow):
         frame.moveCenter(available.center())
         self.move(frame.topLeft())
 
+    # ------------------------------------------------------- lazy screens
+
+    def screen(self, key: str) -> QWidget:
+        """The screen for `key`, built on first access (lazy)."""
+        widget = self._screens.get(key)
+        if widget is None:
+            widget = self._factories[key]()
+            self._screens[key] = widget
+            self.stack.addWidget(widget)
+        return widget
+
+    # Attribute-style accessors kept for existing callers (feature tour,
+    # settings language switch…). Reading one builds the screen on demand.
+    @property
+    def dashboard(self) -> QWidget:
+        return self.screen("dashboard")
+
+    @property
+    def checkout(self) -> QWidget:
+        return self.screen("checkout")
+
+    @property
+    def inventory(self) -> QWidget:
+        return self.screen("inventory")
+
+    @property
+    def customers(self) -> QWidget:
+        return self.screen("customers")
+
+    @property
+    def ventes(self) -> QWidget:
+        return self.screen("ventes")
+
+    @property
+    def creances(self) -> QWidget:
+        return self.screen("creances")
+
+    @property
+    def statistics(self) -> QWidget:
+        return self.screen("statistics")
+
+    @property
+    def suppliers_screen(self) -> QWidget:
+        return self.screen("suppliers")
+
+    @property
+    def alerts(self) -> QWidget:
+        return self.screen("alerts")
+
+    @property
+    def settings_screen(self) -> QWidget:
+        return self.screen("settings")
+
     # ---------------------------------------------------------- navigation
 
-    def navigate(self, screen: QWidget) -> None:
+    def navigate(self, target) -> None:
+        """Show a screen — accepts the screen key or the widget itself."""
+        if isinstance(target, str):
+            key = target
+        else:
+            key = next((k for k, w in self._screens.items() if w is target), None)
+            if key is None:
+                return
+        screen = self.screen(key)
         self.stack.setCurrentWidget(screen)
-        for index, button in enumerate(self._nav_buttons):
-            button.setChecked(self.stack.widget(index + 0) is screen)
-        if screen is self.checkout:
-            self.checkout.search.setFocus()
+        for k, button in self._nav_by_key.items():
+            button.setChecked(k == key)
+        if key == "checkout":
+            screen.search.setFocus()
         elif hasattr(screen, "refresh"):
             screen.refresh()
 
     def _open_product_from_alert(self, product_id: str) -> None:
-        self.navigate(self.inventory)
+        self.navigate("inventory")
         self.inventory.focus_product(product_id)
 
     def _open_purchase_from_alert(self, product: dict) -> None:
         """From a dead-stock row: open Achats & Fournisseurs and start a new
         purchase order with this product pre-filled as the first line."""
-        self.navigate(self.suppliers_screen)
+        self.navigate("suppliers")
         self.suppliers_screen.open_new_purchase_order(prefill_product=product)
 
     # -------------------------------------------------------------- alerts
@@ -414,7 +473,11 @@ class MainWindow(QMainWindow):
             "outstanding_credits_count", 0
         )
         self.alerts_nav.set_badge(count)
-        self.alerts.set_data(alerts)
+        # Feed the Alertes screen only if it exists — building it here would
+        # defeat the lazy startup (it refreshes itself on first navigation).
+        alerts_screen = self._screens.get("alerts")
+        if alerts_screen is not None:
+            alerts_screen.set_data(alerts)
 
     def resizeEvent(self, event) -> None:
         toast = getattr(self, "_active_toast", None)

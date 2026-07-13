@@ -71,9 +71,11 @@ NEUTRAL = _Slate()
 
 DEFAULT_ACCENT = "#2563EB"
 
-# Semantic colors — meaning, not decoration. Fixed across modes (their hues
-# read on both light and dark surfaces); each has hover + subtle variants.
-SEMANTIC = {
+# Semantic colors — meaning, not decoration. The base hues are fixed across
+# modes (they read on both light and dark surfaces); the *subtle* and *text*
+# variants are mode-aware: light tints/dark inks in light mode, dark tints/
+# light inks in dark mode — otherwise badges and banners glare on dark.
+_SEMANTIC_LIGHT = {
     "success": "#16A34A",
     "success_hover": "#15803D",
     "success_subtle": "#DCFCE7",
@@ -88,6 +90,32 @@ SEMANTIC = {
     "danger_subtle": "#FEE2E2",
     "danger_text": "#991B1B",
 }
+_SEMANTIC_DARK = {
+    **_SEMANTIC_LIGHT,
+    "success_subtle": "#173B26",
+    "success_text": "#6EE7A0",
+    "warning_subtle": "#3B2F14",
+    "warning_text": "#FBBF24",
+    "danger_subtle": "#3F1D1D",
+    "danger_text": "#F87171",
+}
+
+
+class _Semantic(Mapping):
+    """Theme-aware semantic scale — same keys, values follow CURRENT_MODE."""
+
+    def __getitem__(self, key: str) -> str:
+        base = _SEMANTIC_DARK if CURRENT_MODE == "dark" else _SEMANTIC_LIGHT
+        return base[key]
+
+    def __iter__(self):
+        return iter(_SEMANTIC_LIGHT)
+
+    def __len__(self) -> int:
+        return len(_SEMANTIC_LIGHT)
+
+
+SEMANTIC = _Semantic()
 
 # Chrome that stays dark in BOTH modes (tooltips, toasts) and the receipt
 # paper mock, which is always white paper with dark ink.
@@ -312,7 +340,7 @@ def _flat_tokens(accent: str, mode: str, overrides: dict[str, str]) -> dict[str,
     slate = _DARK_SLATE if mode == "dark" else _LIGHT_SLATE
     tokens: dict[str, str] = {}
     tokens.update(accent_palette(accent, mode))
-    tokens.update(SEMANTIC)
+    tokens.update(_SEMANTIC_DARK if mode == "dark" else _SEMANTIC_LIGHT)
     tokens.update({f"neutral_{k}": slate[k] for k in _SLATE_KEYS})
     tokens.update(_resolve_semantic(mode, overrides))
     tokens.update(_CHROME)

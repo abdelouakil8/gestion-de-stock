@@ -32,6 +32,7 @@ class ModalDialog(QDialog):
         self.setWindowTitle(title)
         self.setModal(True)
         self.setMinimumWidth(460)
+        self._adjusting = False
         # Paint the dialog's own background from the stylesheet ($background)
         # rather than the (possibly dark) OS palette — see main._apply_theme,
         # which also installs a full theme-derived QPalette as a backstop.
@@ -92,6 +93,8 @@ class ModalDialog(QDialog):
         self.buttons.addButton(
             self.cancel_button, QDialogButtonBox.ButtonRole.RejectRole
         )
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
         body_layout.addWidget(self.buttons)
         outer.addWidget(body)
 
@@ -110,31 +113,63 @@ class ModalDialog(QDialog):
         QScrollArea.sizeHint() is captured at first layout and does NOT track
         a section being shown/hidden later (a partial-payment block, an
         expanded form…), so the dialog would stay at its old height and clip
-        the new content. Drive the viewport height from the holder's own size
-        hint, clamped so the dialog never exceeds ~90 % of the screen (past
-        which the scroll bar correctly takes over).
+        the new content. Pin the viewport height to the holder's own size
+        hint (both directions: the dialog can GROW and SHRINK back), clamped
+        so the dialog never exceeds ~95 % of the screen (past which the
+        scroll bar correctly takes over) — then re-center, so the dialog
+        expands from its middle instead of dropping below the taskbar.
         """
-        holder = self._scroll.widget()
-        if holder is None:
+        if self._adjusting:
             return
-        holder.adjustSize()
-        screen = self.screen() or QApplication.primaryScreen()
-        cap = int(screen.availableGeometry().height() * 0.9) if screen else 800
-        chrome = max(0, self.height() - self._scroll.height())
-        target = min(holder.sizeHint().height(), max(160, cap - chrome))
-        self._scroll.setMinimumHeight(target)
-        self.adjustSize()
-        self._keep_on_screen()
+        self._adjusting = True
+        try:
+            holder = self._scroll.widget()
+            if holder is None:
+                return
+
+            # 1. Measure chrome (header + buttons + margins) BEFORE touching anything.
+            # This overhead is stable across resizes.
+            chrome = max(0, self.height() - self._scroll.height())
+
+            # 2. Clear any fixed-height constraint on the scroll area so the dialog
+            # is allowed to shrink when switching back to a smaller view.
+            self._scroll.setMinimumHeight(0)
+            self._scroll.setMaximumHeight(16777215)  # QWIDGETSIZE_MAX
+
+            # 3. Flush pending layout changes so sizeHint() reflects newly shown/hidden items.
+            QApplication.processEvents()
+            holder.adjustSize()
+
+            screen = self.screen() or QApplication.primaryScreen()
+            cap = int(screen.availableGeometry().height() * 0.95) if screen else 800
+            hint = holder.sizeHint().height()
+            layout = holder.layout()
+            if layout is not None and layout.hasHeightForWidth():
+                # Word-wrapped labels under-report in sizeHint(); ask the layout
+                # for the real height at the current viewport width instead.
+                hint = max(hint, layout.heightForWidth(self._scroll.viewport().width()))
+
+            target = min(hint + 2, max(160, cap - chrome))
+
+            # 4. Explicitly resize the dialog. adjustSize() is asynchronous and
+            # doesn't shrink windows reliably. By resizing explicitly, self.frameGeometry()
+            # immediately reflects the new size so _keep_on_screen() centers it correctly.
+
+            # To bypass any cached minimumSizeHint from the old layout, we force the
+            # dialog to the exact new height, then release it.
+            self.setFixedHeight(target + chrome)
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(16777215)
+
+            # Ensure the scroll area doesn't collapse below the target size.
+            self._scroll.setMinimumHeight(target)
+
+            self._keep_on_screen()
+        finally:
+            self._adjusting = False
 
     def _keep_on_screen(self) -> None:
-        """Keep the whole dialog on-screen after it grows.
-
-        adjustSize() expands the window downward from its top-left, so
-        revealing a section (the partial-payment block…) could push the
-        confirm buttons under the taskbar — the operator then had to drag the
-        window up to reach them. Re-center on the screen and clamp the top so
-        every control stays reachable (the scroll area takes over if the
-        content is taller than the screen)."""
+        """Keep the whole dialog centered and on-screen after it grows."""
         screen = self.screen() or QApplication.primaryScreen()
         if screen is None:
             return

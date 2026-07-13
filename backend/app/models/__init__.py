@@ -20,7 +20,6 @@ from app.models.purchase_order import (
     SupplierPayment,
 )
 from app.models.refund import Refund, RefundItem
-from app.models.reservation import Reservation, ReservationItem, ReservationStatus
 from app.models.sale import Payment, Sale, SaleItem
 from app.models.sale_sequence import SaleSequence
 from app.models.stock_movement import MovementType, StockMovement
@@ -43,9 +42,6 @@ __all__ = [
     "PurchaseOrderItem",
     "Refund",
     "RefundItem",
-    "Reservation",
-    "ReservationItem",
-    "ReservationStatus",
     "Sale",
     "SaleItem",
     "SaleSequence",

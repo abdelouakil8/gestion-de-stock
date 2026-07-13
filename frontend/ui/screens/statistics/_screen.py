@@ -1,18 +1,4 @@
-"""Statistiques — a modern, data-rich activity dashboard.
-
-Range-driven headline KPIs (chiffre d'affaires, bénéfice, ventes, remises)
-each with a delta vs the previous equivalent period; a full-width revenue /
-profit evolution line chart; a financial + stock snapshot (stock value,
-customer credit, supplier debt, out-of-stock); best sellers (by quantity or
-by profit) with margins; sales by category (donut + profitability bars);
-busy hours / weekdays; best customers; dormant stock; and the market-basket
-association rules ("souvent achetés ensemble").
-
-All statistics endpoints are owner data (they derive from cost_price): the
-API requires the PIN, which the client sends automatically when it was
-captured at login. Every section loads visibly and has a designed empty
-state; charts are hand-drawn (no chart library) and mirror cleanly in RTL.
-"""
+"""Statistics dashboard screen — the main StatisticsScreen widget."""
 
 import tempfile
 from datetime import date
@@ -23,10 +9,8 @@ import qtawesome as qta
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
-    QCalendarWidget,
     QDateEdit,
     QFileDialog,
-    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -40,210 +24,27 @@ from PySide6.QtWidgets import (
 from services.workers import run_api
 from ui import format as fmt
 from ui import strings
-from ui.styles.tokens import ICON_SIZES, NEUTRAL, RADIUS, SPACING, THUMB_SIZES
-from ui.widgets.badge import DeltaChip
-from ui.widgets.card import Card, SectionCard
+from ui.styles.tokens import NEUTRAL, SPACING, THUMB_SIZES
+from ui.widgets.card import SectionCard
 from ui.widgets.charts import ColumnChart, DonutChart, LineChart, LinePoint
 from ui.widgets.data_table import DataTable
-from ui.widgets.modal import ModalDialog, show_error
+from ui.widgets.modal import show_error
 from ui.widgets.period_comparison import PeriodComparisonTab
 from ui.widgets.states import EmptyState, StatefulStack
 from ui.widgets.thumb import Thumb
 
-# Fixed, cheerful icon-chip palette for the KPI cards (foreground, tint).
-# Decorative only — kept out of the themeable accent tokens on purpose so the
-# dashboard stays colourful whatever accent the owner picks.
-_KPI_BLUE = ("#2563EB", "#DBEAFE")
-_KPI_GREEN = ("#16A34A", "#DCFCE7")
-_KPI_VIOLET = ("#7C3AED", "#EDE9FE")
-_KPI_AMBER = ("#D97706", "#FEF3C7")
-_KPI_RED = ("#DC2626", "#FEE2E2")
-
-# Category / ranking colours — kept in sync with the donut palette so the
-# same category reads the same colour across the donut and the margin bars.
-_CAT_PALETTE = ["#2563EB", "#16A34A", "#D97706", "#7C3AED", "#0D9488", "#DB2777"]
-
-
-class KpiCard(Card):
-    """Headline metric: colored icon chip + caption, big value, and an
-    insight line that can carry a comparison chip (delta vs previous)."""
-
-    def __init__(self, caption, icon, color, bg, show_delta=False, parent=None) -> None:
-        super().__init__(parent)
-        top = QHBoxLayout()
-        top.setSpacing(SPACING["sm"])
-        chip = QLabel()
-        chip.setFixedSize(40, 40)
-        chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        chip.setPixmap(
-            qta.icon(icon, color=color).pixmap(ICON_SIZES["lg"], ICON_SIZES["lg"])
-        )
-        chip.setStyleSheet(f"background: {bg}; border-radius: {RADIUS['md']}px;")
-        top.addWidget(chip)
-        caption_label = QLabel(caption)
-        caption_label.setObjectName("StatCardTitle")
-        caption_label.setWordWrap(True)
-        top.addWidget(caption_label, 1)
-        self.body.addLayout(top)
-
-        self.value = QLabel("—")
-        self.value.setObjectName("StatCardValue")
-        self.value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.body.addWidget(self.value)
-
-        row2 = QHBoxLayout()
-        row2.setSpacing(SPACING["sm"])
-        self.delta = DeltaChip() if show_delta else None
-        if self.delta is not None:
-            self.delta.setToolTip(strings.STATS_VS_PREVIOUS)
-            row2.addWidget(self.delta, 0, Qt.AlignmentFlag.AlignVCenter)
-        self.sub = QLabel("")
-        self.sub.setObjectName("Muted")
-        self.sub.setVisible(False)
-        row2.addWidget(self.sub, 1, Qt.AlignmentFlag.AlignVCenter)
-        self.body.addLayout(row2)
-        self.body.addStretch(1)
-
-    def set_value(self, text: str, sub: str = "", tone: str = "") -> None:
-        self.value.setText(text)
-        self.value.setProperty("tone", tone)
-        self.value.style().unpolish(self.value)
-        self.value.style().polish(self.value)
-        if sub:
-            self.sub.setText(sub)
-            self.sub.setVisible(True)
-        else:
-            self.sub.setVisible(False)
-
-    def set_delta(self, current: Decimal, previous: Decimal) -> None:
-        if self.delta is not None:
-            self.delta.set_delta(current, previous)
-
-
-class RankBars(QWidget):
-    """A list of labelled horizontal bars (category profitability / share).
-
-    Each row is (label, value_text, ratio 0..1, colour): a name on the lead
-    edge, a proportional coloured bar, and the value on the trailing edge —
-    the whole row lives in a layout so it mirrors under RTL."""
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(0, 0, 0, 0)
-        self._layout.setSpacing(SPACING["sm"])
-        self._empty = QLabel(strings.STATS_NO_DATA)
-        self._empty.setObjectName("Muted")
-        self._layout.addWidget(self._empty)
-        self._layout.addStretch(1)
-
-    def _clear(self) -> None:
-        while self._layout.count():
-            item = self._layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-
-    def set_rows(self, rows) -> None:
-        self._clear()
-        if not rows:
-            self._empty = QLabel(strings.STATS_NO_DATA)
-            self._empty.setObjectName("Muted")
-            self._layout.addWidget(self._empty)
-            self._layout.addStretch(1)
-            return
-        for label, value_text, ratio, color in rows:
-            self._layout.addWidget(self._make_row(label, value_text, ratio, color))
-        self._layout.addStretch(1)
-
-    def _make_row(self, label, value_text, ratio, color) -> QWidget:
-        row = QWidget()
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(SPACING["sm"])
-        name = QLabel(label)
-        name.setFixedWidth(112)
-        name.setStyleSheet("font-weight: 600; background: transparent;")
-        layout.addWidget(name)
-
-        track = QFrame()
-        track.setFixedHeight(12)
-        track.setStyleSheet(f"background: {NEUTRAL['200']}; border-radius: 6px;")
-        tl = QHBoxLayout(track)
-        tl.setContentsMargins(0, 0, 0, 0)
-        tl.setSpacing(0)
-        fill = QFrame()
-        fill.setStyleSheet(f"background: {color}; border-radius: 6px;")
-        clamped = max(0.0, min(1.0, ratio))
-        tl.addWidget(fill, max(1, int(clamped * 1000)))
-        spacer = QWidget()
-        spacer.setStyleSheet("background: transparent;")
-        tl.addWidget(spacer, max(0, int(round((1 - clamped) * 1000))))
-        layout.addWidget(track, 1)
-
-        value = QLabel(value_text)
-        value.setObjectName("Muted")
-        value.setFixedWidth(72)
-        value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        layout.addWidget(value)
-        return row
-
-
-class RuleCard(QWidget):
-    """Readable French association rule with its numbers."""
-
-    def __init__(self, rule: dict, parent=None) -> None:
-        super().__init__(parent)
-        self.setObjectName("RuleCard")
-        # QWidget subclass: required for the QSS card background/border.
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(
-            SPACING["md"], SPACING["sm"], SPACING["md"], SPACING["sm"]
-        )
-        layout.setSpacing(SPACING["xs"])
-
-        antecedent = " + ".join(p["name"] for p in rule["antecedent"])
-        consequent = " + ".join(p["name"] for p in rule["consequent"])
-        sentence = QLabel(
-            strings.STATS_ASSOCIATION_RULE.format(
-                antecedent=antecedent, consequent=consequent
-            )
-        )
-        sentence.setWordWrap(True)
-        sentence.setStyleSheet("font-weight: 600; background: transparent;")
-        layout.addWidget(sentence)
-
-        detail = QLabel(
-            strings.STATS_ASSOCIATION_DETAIL.format(
-                confidence=f"{rule['confidence'] * 100:.0f}",
-                support=f"{rule['support'] * 100:.0f}",
-                lift=f"{rule['lift']:.2f}".replace(".", ","),
-            )
-        )
-        detail.setObjectName("Muted")
-        layout.addWidget(detail)
-        self.setToolTip(detail.text())
-
-
-class _DailyReportDatePicker(ModalDialog):
-    """A calendar picker for the end-of-day report (any past date)."""
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(strings.STATS_DAILY_REPORT_TITLE, parent)
-        self.selected: QDate | None = None
-        prompt = QLabel(strings.STATS_DAILY_REPORT_PROMPT)
-        self.content.addWidget(prompt)
-        self.calendar = QCalendarWidget()
-        self.calendar.setMaximumDate(QDate.currentDate())  # never a future day
-        self.calendar.setSelectedDate(QDate.currentDate())
-        self.content.addWidget(self.calendar)
-        self.ok_button.setText(strings.STATS_DAILY_REPORT_GENERATE)
-
-    def accept(self) -> None:
-        self.selected = self.calendar.selectedDate()
-        super().accept()
+from ._cards import (
+    _CAT_PALETTE,
+    _KPI_AMBER,
+    _KPI_BLUE,
+    _KPI_GREEN,
+    _KPI_RED,
+    _KPI_VIOLET,
+    KpiCard,
+    RankBars,
+    RuleCard,
+    _DailyReportDatePicker,
+)
 
 
 class StatisticsScreen(QWidget):
@@ -297,7 +98,6 @@ class StatisticsScreen(QWidget):
         outer.addWidget(self.tabs, stretch=1)
 
     def _on_tab_changed(self, index: int) -> None:
-        # First time the comparison tab is shown, run the default comparison.
         if (
             self.tabs.widget(index) is self.comparison_tab
             and not self._comparison_loaded
@@ -990,7 +790,6 @@ class StatisticsScreen(QWidget):
     def _render_categories(self) -> None:
         cats = self._categories or []
         ranked = sorted(cats, key=lambda c: Decimal(str(c["revenue"])), reverse=True)
-        # Donut: revenue share, capped to 6 slices + an aggregated "Autres".
         items = [
             (c["name"] or strings.STATS_NO_CATEGORY, Decimal(str(c["revenue"])))
             for c in ranked[:6]
@@ -1002,7 +801,6 @@ class StatisticsScreen(QWidget):
                 items.append((strings.STATS_OTHERS, other))
         self.cat_donut.set_items(items)
 
-        # Profitability bars: top categories by revenue, bar length ∝ margin.
         shown = ranked[:6]
         margins = []
         for c in shown:
@@ -1141,7 +939,7 @@ class StatisticsScreen(QWidget):
 
     def _on_error(self, err) -> None:
         if getattr(self, "_error_shown", False):
-            return  # one dialog per refresh, not one per endpoint
+            return
         self._error_shown = True
         if err.code in ("invalid_pin", "pin_not_configured"):
             show_error(self, strings.STATS_PIN_REQUIRED)

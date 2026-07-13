@@ -27,7 +27,8 @@ PHASE16_REV = "a2b3c4d5e6f7"
 PHASE17_REV = "b3c4d5e6f7a8"
 PHASE18_REV = "c4d5e6f7a8b9"
 PHASE19_REV = "d5e6f7a8b9c1"
-HEAD_REV = PHASE19_REV  # current head
+PHASE20_REV = "e8f9a0b1c2d3"
+HEAD_REV = PHASE20_REV  # current head
 
 
 @pytest.fixture()

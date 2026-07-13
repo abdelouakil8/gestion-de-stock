@@ -1,13 +1,5 @@
-"""Réglages — receipt customization with live preview, language, accent.
+"""Settings screen — receipt, language, appearance, printer, backup, danger."""
 
-The receipt preview is a faithful local mock of the backend's 80mm layout
-(services/receipts.py): header (shop name / phone / address), sample line,
-total, the credit block when enabled, footer. It re-renders on every
-keystroke. Saving goes through PUT /settings (PIN-gated server-side); a
-saved accent color re-applies the stylesheet live, no restart.
-"""
-
-from datetime import datetime
 from functools import partial
 
 import qtawesome as qta
@@ -39,185 +31,17 @@ from ui.styles.tokens import (
     NEUTRAL,
     SPACING,
     build_palette,
+    contrast_ratio,
     render_qss,
     semantic_defaults,
 )
 from ui.widgets.card import SectionCard
-from ui.widgets.modal import ModalDialog, show_error, show_info
+from ui.widgets.modal import show_error, show_info
 from ui.widgets.promotions_management import PromotionsManagementTab
 from ui.widgets.toast import show_toast
 from ui.widgets.users_management import UsersManagementTab
 
-
-class FactoryResetDialog(ModalDialog):
-    """Type-your-PIN confirmation for the full wipe. The typed PIN is sent
-    to the server, which is the only judge — no cached credential reuse."""
-
-    def __init__(self, api, parent=None) -> None:
-        super().__init__(strings.RESET_DIALOG_TITLE, parent)
-        self.api = api
-        # NB: never name this "done" — it would shadow QDialog.done(),
-        # which accept() invokes virtually (hard crash).
-        self.reset_done = False
-
-        warning = QLabel(strings.RESET_DIALOG_WARNING)
-        warning.setObjectName("FieldError")
-        warning.setWordWrap(True)
-        self.content.addWidget(warning)
-
-        self.content.addWidget(QLabel(strings.RESET_DIALOG_PIN_PROMPT))
-        self.pin_input = QLineEdit()
-        self.pin_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.pin_input.textChanged.connect(
-            lambda text: self.ok_button.setEnabled(bool(text.strip()))
-        )
-        self.content.addWidget(self.pin_input)
-
-        self.ok_button.setText(strings.RESET_DIALOG_CONFIRM)
-        self.ok_button.setObjectName("Danger")
-        self.ok_button.setEnabled(False)
-        self.pin_input.setFocus()
-
-    def accept(self) -> None:
-        pin = self.pin_input.text().strip()
-        if not pin:
-            return
-        self.ok_button.setEnabled(False)
-        run_api(
-            lambda: self.api.factory_reset(pin),
-            self._on_done,
-            self._on_error,
-        )
-
-    def _on_done(self, _result: object) -> None:
-        self.reset_done = True
-        super().accept()
-
-    def _on_error(self, err) -> None:
-        self.ok_button.setEnabled(True)
-        show_error(self, err.message)
-        self.pin_input.selectAll()
-        self.pin_input.setFocus()
-
-
-class BackupRestoreDialog(ModalDialog):
-    """PIN confirmation to restore a backup — destructive, needs typed PIN."""
-
-    def __init__(self, api, zip_path: str, parent=None) -> None:
-        super().__init__(strings.BACKUP_RESTORE_TITLE, parent)
-        self.api = api
-        self.zip_path = zip_path
-        self.restore_done = False
-
-        warning = QLabel(strings.BACKUP_RESTORE_CONFIRM)
-        warning.setObjectName("FieldError")
-        warning.setWordWrap(True)
-        self.content.addWidget(warning)
-
-        self.pin_input = QLineEdit()
-        self.pin_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.pin_input.setPlaceholderText(strings.LOGIN_PLACEHOLDER)
-        self.pin_input.textChanged.connect(
-            lambda text: self.ok_button.setEnabled(bool(text.strip()))
-        )
-        self.content.addWidget(self.pin_input)
-
-        self.ok_button.setText(strings.BACKUP_RESTORE)
-        self.ok_button.setObjectName("Danger")
-        self.ok_button.setEnabled(False)
-        self.pin_input.setFocus()
-
-    def accept(self) -> None:
-        pin = self.pin_input.text().strip()
-        if not pin:
-            return
-        self.ok_button.setEnabled(False)
-        from pathlib import Path
-
-        zip_data = Path(self.zip_path).read_bytes()
-        run_api(
-            lambda: self.api.restore_backup(zip_data, pin),
-            self._on_done,
-            self._on_error,
-        )
-
-    def _on_done(self, _result: object) -> None:
-        self.restore_done = True
-        super().accept()
-
-    def _on_error(self, err) -> None:
-        self.ok_button.setEnabled(True)
-        show_error(self, err.message)
-        self.pin_input.selectAll()
-        self.pin_input.setFocus()
-
-
-class ReceiptPreview(QFrame):
-    """Local mock of the printed receipt — same information layout.
-
-    Rendered as ONE monospace label rebuilt from scratch on every change:
-    no widget churn, so nothing can ever overlap or leak between renders.
-    """
-
-    COLS = 32  # characters per 80mm-style line
-
-    def __init__(self, store_name: str, parent=None) -> None:
-        super().__init__(parent)
-        self.setObjectName("ReceiptPaper")
-        self.store_name = store_name
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(
-            SPACING["lg"], SPACING["lg"], SPACING["lg"], SPACING["lg"]
-        )
-        self._label = QLabel("")
-        self._label.setTextFormat(Qt.TextFormat.PlainText)
-        layout.addWidget(self._label)
-
-    def render_preview(
-        self,
-        shop_name: str,
-        phone: str,
-        address: str,
-        footer: str,
-        show_credit: bool,
-    ) -> None:
-        width = self.COLS
-        from ui.i18n import current_language
-
-        def fit(text: str) -> str:
-            return text if len(text) <= width else text[: width - 1] + "…"
-
-        def center(text: str) -> str:
-            return fit(text).center(width).rstrip()
-
-        def row(left: str, right: str) -> str:
-            space = width - len(right)
-            if current_language == "ar":
-                # In Arabic, the visual left is the logical right.
-                return fit(right).ljust(len(right) + 1) + fit(left).rjust(
-                    width - len(right) - 1
-                )
-            return fit(left)[:space].ljust(space) + right
-
-        lines = [center(shop_name or self.store_name)]
-        if phone:
-            lines.append(center(f"Tél : {phone}"))
-        if address:
-            lines.append(center(address))
-        lines.append(center(datetime.now().strftime("Le %d/%m/%Y %H:%M")))
-        lines.append(center(strings.SETTINGS_PREVIEW_TICKET))
-        lines.append("-" * width)
-        lines.append(fit(strings.SETTINGS_PREVIEW_SAMPLE_PRODUCT))
-        lines.append(row("  2 x 40.00", "80.00"))
-        lines.append("-" * width)
-        lines.append(row(strings.SETTINGS_PREVIEW_TOTAL, "80.00"))
-        if show_credit:
-            lines.append(fit(strings.SETTINGS_PREVIEW_CUSTOMER))
-            lines.append(row(strings.SETTINGS_PREVIEW_PAID, "30.00"))
-            lines.append(row(strings.SETTINGS_PREVIEW_REMAINING, "50.00"))
-        lines.append("")
-        lines.append(center(footer or strings.SETTINGS_PREVIEW_DEFAULT_FOOTER))
-        self._label.setText("\n".join(lines))
+from ._dialogs import BackupRestoreDialog, FactoryResetDialog, ReceiptPreview
 
 
 class SettingsScreen(QWidget):
@@ -227,10 +51,9 @@ class SettingsScreen(QWidget):
         self.store_id = store["id"]
         self.store_name = store.get("name", "")
         self.settings: dict = {}
-        self._accent = None  # currently chosen (unsaved) accent
+        self._accent = None
         self._mode = "light"
         self._language = "fr"
-        # Per-role custom overrides (None = follow the mode default).
         self._overrides: dict[str, str | None] = {
             "background": None,
             "surface": None,
@@ -238,6 +61,7 @@ class SettingsScreen(QWidget):
             "border": None,
         }
         self._color_chips: dict[str, QPushButton] = {}
+        self._color_hex: dict[str, QLabel] = {}
         self._mode_buttons: dict[str, QPushButton] = {}
         self._lang_buttons: dict[str, QPushButton] = {}
 
@@ -428,21 +252,53 @@ class SettingsScreen(QWidget):
         swatch_row.addStretch(1)
         appearance_card.body.addLayout(swatch_row)
 
+        colors_divider = QFrame()
+        colors_divider.setObjectName("HDivider")
+        colors_divider.setFixedHeight(1)
+        appearance_card.body.addWidget(colors_divider)
+
+        custom_header = QHBoxLayout()
         custom_label = QLabel(strings.SETTINGS_CUSTOM_COLORS)
         custom_label.setObjectName("Caption")
-        appearance_card.body.addWidget(custom_label)
-        for role, text in (
-            ("background", strings.SETTINGS_COLOR_BG),
-            ("surface", strings.SETTINGS_COLOR_SURFACE),
-            ("text", strings.SETTINGS_COLOR_TEXT),
-            ("border", strings.SETTINGS_COLOR_BORDER),
+        custom_header.addWidget(custom_label)
+        custom_header.addStretch(1)
+        reset_all = QPushButton(
+            qta.icon("fa5s.undo", color=NEUTRAL["500"]),
+            strings.SETTINGS_COLOR_RESET_ALL,
+        )
+        reset_all.setObjectName("Ghost")
+        reset_all.clicked.connect(self._reset_all_colors)
+        custom_header.addWidget(reset_all)
+        appearance_card.body.addLayout(custom_header)
+
+        for role, text, desc in (
+            ("background", strings.SETTINGS_COLOR_BG, strings.SETTINGS_COLOR_BG_DESC),
+            (
+                "surface",
+                strings.SETTINGS_COLOR_SURFACE,
+                strings.SETTINGS_COLOR_SURFACE_DESC,
+            ),
+            ("text", strings.SETTINGS_COLOR_TEXT, strings.SETTINGS_COLOR_TEXT_DESC),
+            (
+                "border",
+                strings.SETTINGS_COLOR_BORDER,
+                strings.SETTINGS_COLOR_BORDER_DESC,
+            ),
         ):
-            appearance_card.body.addLayout(self._color_row(role, text))
+            appearance_card.body.addLayout(self._color_row(role, text, desc))
+
+        self.contrast_warning = QLabel(strings.SETTINGS_CONTRAST_WARNING)
+        self.contrast_warning.setObjectName("FieldError")
+        self.contrast_warning.setWordWrap(True)
+        self.contrast_warning.hide()
+        appearance_card.body.addWidget(self.contrast_warning)
+
         custom_hint = QLabel(strings.SETTINGS_CUSTOM_HINT)
         custom_hint.setObjectName("FieldHint")
         custom_hint.setWordWrap(True)
         appearance_card.body.addWidget(custom_hint)
         left.addWidget(appearance_card)
+        self._refresh_color_chips()
 
         # -------------------------------------------------- danger zone
         danger_card = SectionCard(
@@ -476,9 +332,6 @@ class SettingsScreen(QWidget):
 
         scroll.setWidget(content)
 
-        # Tabbed: the general settings + an owner-only user-management tab
-        # (Promotions is added by the promotions feature). The header Save
-        # button applies only to the general tab.
         self.tabs = QTabWidget()
         self.tabs.addTab(scroll, strings.SETTINGS_TAB_GENERAL)
         self.users_tab = UsersManagementTab(self.api, self.store_id)
@@ -492,7 +345,6 @@ class SettingsScreen(QWidget):
 
     def _on_tab_changed(self, index: int) -> None:
         widget = self.tabs.widget(index)
-        # The Save button only makes sense on the general settings tab.
         self.save_button.setVisible(index == 0)
         if widget is self.users_tab:
             self.users_tab.refresh()
@@ -568,16 +420,27 @@ class SettingsScreen(QWidget):
             registry[key] = button
         return group
 
-    def _color_row(self, role: str, label_text: str):
+    def _color_row(self, role: str, label_text: str, desc_text: str):
         row = QHBoxLayout()
         row.setSpacing(SPACING["sm"])
+        texts = QVBoxLayout()
+        texts.setSpacing(0)
         label = QLabel(label_text)
         label.setObjectName("Secondary")
-        row.addWidget(label)
+        texts.addWidget(label)
+        desc = QLabel(desc_text)
+        desc.setObjectName("Muted")
+        texts.addWidget(desc)
+        row.addLayout(texts)
         row.addStretch(1)
+        hex_label = QLabel("")
+        hex_label.setObjectName("Muted")
+        self._color_hex[role] = hex_label
+        row.addWidget(hex_label)
         chip = QPushButton()
         chip.setObjectName("Swatch")
         chip.setCursor(Qt.CursorShape.PointingHandCursor)
+        chip.setToolTip(strings.SETTINGS_CUSTOM_COLORS)
         chip.clicked.connect(partial(self._pick_role_color, role))
         self._color_chips[role] = chip
         row.addWidget(chip)
@@ -627,12 +490,29 @@ class SettingsScreen(QWidget):
         self._refresh_color_chips()
         self._apply_live_theme()
 
+    def _reset_all_colors(self) -> None:
+        self._overrides = {role: None for role in self._overrides}
+        self._refresh_color_chips()
+        self._apply_live_theme()
+
     def _refresh_color_chips(self) -> None:
         defaults = semantic_defaults(self._mode)
+        effective = {
+            role: self._overrides.get(role) or defaults[role]
+            for role in self._color_chips
+        }
         for role, chip in self._color_chips.items():
-            color = self._overrides.get(role) or defaults[role]
-            chip.setStyleSheet(f"#Swatch {{ background: {color}; }}")
-            chip.setToolTip(color)
+            color = effective[role]
+            chip.setStyleSheet(
+                f"#Swatch {{ background: {color}; "
+                f"border: 2px solid {defaults['border_strong']}; }}"
+            )
+            self._color_hex[role].setText(color.upper())
+        readable = min(
+            contrast_ratio(effective["text"], effective["background"]),
+            contrast_ratio(effective["text"], effective["surface"]),
+        )
+        self.contrast_warning.setVisible(readable < 4.5)
 
     def _apply_live_theme(self) -> None:
         """Re-theme the whole app immediately (a live preview of the choices)."""
@@ -649,9 +529,8 @@ class SettingsScreen(QWidget):
         from ui.screens.feature_tour import FeatureTour
 
         window = self.window()
-        if not hasattr(window, "_nav_buttons"):
-            return  # not hosted in the main window (defensive)
-        # Keep a reference on the window so the modeless tour isn't GC'd.
+        if not hasattr(window, "_nav_by_key"):
+            return
         window._feature_tour = FeatureTour(window)
         window._feature_tour.start()
 
@@ -736,7 +615,6 @@ class SettingsScreen(QWidget):
         self.settings = dict(settings)
         new_lang = self.settings.get("ui_language", "fr")
 
-        # Re-theme live from the saved theme (authoritative) — no restart.
         app = QApplication.instance()
         if app is not None:
             overrides = {
@@ -766,7 +644,7 @@ class SettingsScreen(QWidget):
                 new_window = MainWindow(self.api, main_win.store)
                 new_window.navigate(new_window.settings_screen)
 
-                app._main_window = new_window  # Keep reference to prevent GC
+                app._main_window = new_window
                 new_window.show()
                 main_win.close()
                 main_win.deleteLater()

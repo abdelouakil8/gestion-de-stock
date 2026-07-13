@@ -40,10 +40,11 @@ from ui.widgets.customer_dialogs import CustomerFormDialog
 from ui.widgets.customer_search import CustomerSearchBox
 from ui.widgets.data_table import DataTable
 from ui.widgets.modal import ModalDialog, show_error
+from ui.widgets.pagination import PaginationBar
 from ui.widgets.states import EmptyState, StatefulStack
 from ui.widgets.toast import show_toast
 
-_FETCH_LIMIT = 200
+_PAGE_SIZE = 50
 
 # Price-level -> French label, mirrors the checkout selector.
 _LEVEL_LABELS = {
@@ -81,6 +82,7 @@ class VentesScreen(QWidget):
         self.store_id = store_id
         self.on_view_product = on_view_product
         self.sales: list[dict] = []
+        self._page = 0
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(*[SPACING["xl"]] * 4)
@@ -105,13 +107,15 @@ class VentesScreen(QWidget):
         self.range_combo = QComboBox()
         for key, label, _days in _DATE_RANGES:
             self.range_combo.addItem(label, key)
-        self.range_combo.currentIndexChanged.connect(lambda _: self.refresh())
+        self.range_combo.currentIndexChanged.connect(
+            lambda _: self._reset_and_refresh()
+        )
         filters.addWidget(self.range_combo)
 
         self.type_combo = QComboBox()
         for key, label in _TYPES:
             self.type_combo.addItem(label, key)
-        self.type_combo.currentIndexChanged.connect(lambda _: self.refresh())
+        self.type_combo.currentIndexChanged.connect(lambda _: self._reset_and_refresh())
         filters.addWidget(self.type_combo)
 
         filters.addStretch(1)
@@ -135,6 +139,10 @@ class VentesScreen(QWidget):
         )
         layout.addWidget(self.stack, stretch=1)
 
+        self.pagination = PaginationBar()
+        self.pagination.page_changed.connect(self._on_page_changed)
+        layout.addWidget(self.pagination)
+
     # ------------------------------------------------------------- loading
 
     def _date_from(self) -> str | None:
@@ -146,6 +154,10 @@ class VentesScreen(QWidget):
         start_day = (datetime.now() - timedelta(days=days)).date()
         return datetime.combine(start_day, time.min).isoformat()
 
+    def _reset_and_refresh(self) -> None:
+        self._page = 0
+        self.refresh()
+
     def refresh(self) -> None:
         self.stack.show_loading()
         type_key = self.type_combo.currentData()
@@ -155,7 +167,6 @@ class VentesScreen(QWidget):
         elif type_key == "confirmed":
             guest = "confirmed"
         date_from = self._date_from()
-        # A cashier only ever sees the sales they rang (role-scoped view).
         own_only = None
         if getattr(self.api, "role", None) == "cashier" and self.api.current_user:
             own_only = self.api.current_user["id"]
@@ -165,44 +176,49 @@ class VentesScreen(QWidget):
                 guest=guest,
                 created_by_user_id=own_only,
                 date_from=date_from,
-                limit=_FETCH_LIMIT,
             ),
-            self._render,
+            self._on_sales_loaded,
             lambda err: self._on_error(err),
         )
 
     def _on_error(self, err) -> None:
         self.stack.show_empty()
+        self.pagination.set_state(0, 1)
         show_error(self, err.message)
 
-    def _render(self, sales: object) -> None:
+    def _on_sales_loaded(self, sales: object) -> None:
         rows = list(sales)
-        # Client-side refinements the server does not model as flags.
         type_key = self.type_combo.currentData()
         if type_key == "with_customer":
             rows = [s for s in rows if s.get("customer_id")]
         elif type_key == "credit":
             rows = [s for s in rows if _balance(s) > 0]
         self.sales = rows
+        self._display_page()
 
-        if not rows:
+    def _display_page(self) -> None:
+        if not self.sales:
             self.stack.show_empty()
+            self.pagination.set_state(0, 1)
             return
-
+        total_pages = (len(self.sales) + _PAGE_SIZE - 1) // _PAGE_SIZE
+        self._page = min(self._page, total_pages - 1)
+        start = self._page * _PAGE_SIZE
+        page_rows = self.sales[start : start + _PAGE_SIZE]
         self.table.set_rows(
             [
                 [
                     fmt.fmt_datetime(sale.get("created_at")),
-                    "",  # customer cell (widget below)
+                    "",
                     fmt.fmt_money(sale["total_amount"]),
                     fmt.fmt_money(sale["paid_amount"]),
                     fmt.fmt_money(_balance(sale)),
-                    "",  # status badge below
+                    "",
                 ]
-                for sale in rows
+                for sale in page_rows
             ]
         )
-        for row, sale in enumerate(rows):
+        for row, sale in enumerate(page_rows):
             self.table.setCellWidget(row, 1, self._customer_cell(sale))
             balance = _balance(sale)
             badge = (
@@ -212,6 +228,11 @@ class VentesScreen(QWidget):
             )
             self.table.setCellWidget(row, 5, self._chip_holder(badge))
         self.stack.show_content()
+        self.pagination.set_state(self._page, total_pages)
+
+    def _on_page_changed(self, page: int) -> None:
+        self._page = page
+        self._display_page()
 
     @staticmethod
     def _chip_holder(widget: QWidget) -> QWidget:
@@ -239,9 +260,10 @@ class VentesScreen(QWidget):
 
     def _open_selected(self, _item) -> None:
         row = self.table.selected_row()
-        if not (0 <= row < len(self.sales)):
+        index = self._page * _PAGE_SIZE + row
+        if not (0 <= index < len(self.sales)):
             return
-        sale = self.sales[row]
+        sale = self.sales[index]
         dialog = SaleDetailDialog(self.api, self.store_id, sale, parent=self)
         dialog.exec()
         if dialog.changed:

@@ -11,6 +11,7 @@ from typing import Any
 
 import httpx
 
+from services.cache import AppCache
 from ui import strings
 
 
@@ -29,11 +30,10 @@ class ApiClient:
         self._client = httpx.Client(
             base_url=f"http://{host}:{port}/api/v1", timeout=10.0
         )
-        self.pin: str | None = None  # legacy owner PIN (re-confirm dialogs)
-        # Multi-user auth: the session token issued at login is attached to
-        # every request; current_user carries {id, name, role}.
+        self.pin: str | None = None
         self.session_token: str | None = None
         self.current_user: dict | None = None
+        self.cache = AppCache(default_ttl=30.0)
 
     # ------------------------------------------------------------ plumbing
 
@@ -84,6 +84,21 @@ class ApiClient:
         if response.status_code == 204:
             return None
         return response.json()
+
+    def _cached(self, key: str, method: str, path: str, **kwargs) -> Any:
+        """GET with cache. Returns cached value if fresh, else fetches + stores."""
+        hit, value = self.cache.get(key)
+        if hit:
+            return value
+        result = self._request(method, path, **kwargs)
+        self.cache.set(key, result)
+        return result
+
+    # ------------------------------------------------------------- version
+
+    def check_version(self) -> dict:
+        """GET /version — returns api_version and min_frontend_version."""
+        return self._request("GET", "/version")
 
     # ---------------------------------------------------------------- auth
 
@@ -161,37 +176,6 @@ class ApiClient:
     def deactivate_promotion(self, promo_id: str) -> None:
         return self._request("DELETE", f"/promotions/{promo_id}", owner=True)
 
-    # --------------------------------------------------------- reservations
-
-    def create_reservation(self, payload: dict) -> dict:
-        return self._request("POST", "/reservations", owner=True, json=payload)
-
-    def list_reservations(
-        self, store_id: str, status: str | None = None, customer_id: str | None = None
-    ) -> list[dict]:
-        params: dict = {"store_id": store_id}
-        if status:
-            params["status"] = status
-        if customer_id:
-            params["customer_id"] = customer_id
-        return self._request("GET", "/reservations", owner=True, params=params)
-
-    def get_reservation(self, reservation_id: str) -> dict:
-        return self._request("GET", f"/reservations/{reservation_id}", owner=True)
-
-    def complete_reservation(self, reservation_id: str, payment: dict) -> dict:
-        return self._request(
-            "POST",
-            f"/reservations/{reservation_id}/complete",
-            owner=True,
-            json={"payment": payment},
-        )
-
-    def cancel_reservation(self, reservation_id: str) -> dict:
-        return self._request(
-            "POST", f"/reservations/{reservation_id}/cancel", owner=True
-        )
-
     # --------------------------------------------------------------- stores
 
     def list_stores(self) -> list[dict]:
@@ -203,20 +187,32 @@ class ApiClient:
     # ----------------------------------------------------------- categories
 
     def list_categories(self, store_id: str) -> list[dict]:
-        return self._request("GET", "/categories", params={"store_id": store_id})
+        return self._cached(
+            f"categories:{store_id}",
+            "GET",
+            "/categories",
+            params={"store_id": store_id},
+        )
 
     def create_category(self, store_id: str, name: str) -> dict:
-        return self._request(
+        result = self._request(
             "POST",
             "/categories",
             owner=True,
             json={"store_id": store_id, "name": name},
         )
+        self.cache.invalidate("categories:")
+        return result
 
     # ------------------------------------------------------------- products
 
     def list_products(self, store_id: str) -> list[dict]:
-        return self._request("GET", "/products", params={"store_id": store_id})
+        return self._cached(
+            f"products:{store_id}",
+            "GET",
+            "/products",
+            params={"store_id": store_id},
+        )
 
     def search_products(
         self,
@@ -247,15 +243,21 @@ class ApiClient:
         return self._request("GET", f"/products/{product_id}/details", owner=True)
 
     def create_product(self, payload: dict) -> dict:
-        return self._request("POST", "/products", owner=True, json=payload)
+        result = self._request("POST", "/products", owner=True, json=payload)
+        self.cache.invalidate("products:")
+        return result
 
     def update_product(self, product_id: str, payload: dict) -> dict:
-        return self._request(
+        result = self._request(
             "PATCH", f"/products/{product_id}", owner=True, json=payload
         )
+        self.cache.invalidate("products:")
+        return result
 
     def archive_product(self, product_id: str) -> None:
-        return self._request("DELETE", f"/products/{product_id}", owner=True)
+        result = self._request("DELETE", f"/products/{product_id}", owner=True)
+        self.cache.invalidate("products:")
+        return result
 
     # -------------------------------------------------------- product images
 
@@ -303,12 +305,14 @@ class ApiClient:
         body: dict = {"new_quantity": new_quantity, "reason": reason}
         if note:
             body["note"] = note
-        return self._request(
+        result = self._request(
             "POST",
             f"/products/{product_id}/adjust-stock",
             extra_headers={"X-Owner-Pin": pin},
             json=body,
         )
+        self.cache.invalidate("products:")
+        return result
 
     def list_stock_movements(
         self,
@@ -336,18 +340,6 @@ class ApiClient:
             params["date_to"] = date_to
         return self._request("GET", "/products/movements", owner=True, params=params)
 
-    def generate_labels(
-        self, store_id: str, product_ids: list[str], label_config: dict
-    ) -> bytes:
-        """Barcode-label sheet PDF for the selected products (manager+)."""
-        return self._request(
-            "POST",
-            "/products/labels/generate",
-            owner=True,
-            params={"store_id": store_id},
-            json={"product_ids": product_ids, "label_config": label_config},
-        )
-
     # -------------------------------------------------------------- customers
 
     def list_customers(
@@ -360,19 +352,29 @@ class ApiClient:
             params["q"] = query
         if limit is not None:
             params["limit"] = limit
+        if not query and limit is None:
+            return self._cached(
+                f"customers:{store_id}", "GET", "/customers", params=params
+            )
         return self._request("GET", "/customers", params=params)
 
     def get_customer(self, customer_id: str) -> dict:
         return self._request("GET", f"/customers/{customer_id}")
 
     def create_customer(self, payload: dict) -> dict:
-        return self._request("POST", "/customers", json=payload)
+        result = self._request("POST", "/customers", json=payload)
+        self.cache.invalidate("customers:")
+        return result
 
     def update_customer(self, customer_id: str, payload: dict) -> dict:
-        return self._request("PATCH", f"/customers/{customer_id}", json=payload)
+        result = self._request("PATCH", f"/customers/{customer_id}", json=payload)
+        self.cache.invalidate("customers:")
+        return result
 
     def archive_customer(self, customer_id: str) -> None:
-        return self._request("DELETE", f"/customers/{customer_id}", owner=True)
+        result = self._request("DELETE", f"/customers/{customer_id}", owner=True)
+        self.cache.invalidate("customers:")
+        return result
 
     # ---------------------------------------------------------------- sales
 
@@ -391,7 +393,9 @@ class ApiClient:
             body["payment"] = payment
         if promo_code:
             body["promo_code"] = promo_code
-        return self._request("POST", "/sales/checkout", json=body)
+        result = self._request("POST", "/sales/checkout", json=body)
+        self.cache.invalidate("products:")
+        return result
 
     def list_sales(
         self,
@@ -735,9 +739,11 @@ class ApiClient:
     def factory_reset(self, pin: str) -> dict:
         """Full wipe. The freshly TYPED pin is sent — never the cached one,
         so the confirmation dialog cannot be bypassed."""
-        return self._request(
+        result = self._request(
             "POST", "/admin/factory-reset", extra_headers={"X-Owner-Pin": pin}
         )
+        self.cache.clear()
+        return result
 
     # --------------------------------------------------------------- backup
 
@@ -747,12 +753,14 @@ class ApiClient:
 
     def restore_backup(self, zip_data: bytes, pin: str) -> dict:
         """Upload a backup ZIP to restore. Returns safety backup info."""
-        return self._request(
+        result = self._request(
             "POST",
             "/backup/restore",
             extra_headers={"X-Owner-Pin": pin},
             files={"file": ("backup.zip", zip_data, "application/zip")},
         )
+        self.cache.clear()
+        return result
 
     def list_backups(self) -> list[dict]:
         return self._request("GET", "/backup/list", owner=True)
@@ -782,18 +790,28 @@ class ApiClient:
         params: dict = {"store_id": store_id}
         if q:
             params["q"] = q
+        if not q:
+            return self._cached(
+                f"suppliers:{store_id}", "GET", "/suppliers", params=params
+            )
         return self._request("GET", "/suppliers", params=params)
 
     def create_supplier(self, payload: dict) -> dict:
-        return self._request("POST", "/suppliers", owner=True, json=payload)
+        result = self._request("POST", "/suppliers", owner=True, json=payload)
+        self.cache.invalidate("suppliers:")
+        return result
 
     def update_supplier(self, supplier_id: str, payload: dict) -> dict:
-        return self._request(
+        result = self._request(
             "PATCH", f"/suppliers/{supplier_id}", owner=True, json=payload
         )
+        self.cache.invalidate("suppliers:")
+        return result
 
     def delete_supplier(self, supplier_id: str) -> None:
-        return self._request("DELETE", f"/suppliers/{supplier_id}", owner=True)
+        result = self._request("DELETE", f"/suppliers/{supplier_id}", owner=True)
+        self.cache.invalidate("suppliers:")
+        return result
 
     # -------------------------------------------------------- purchase orders
 
@@ -806,7 +824,9 @@ class ApiClient:
         return self._request("GET", "/purchase-orders", params=params)
 
     def create_purchase_order(self, payload: dict) -> dict:
-        return self._request("POST", "/purchase-orders", owner=True, json=payload)
+        result = self._request("POST", "/purchase-orders", owner=True, json=payload)
+        self.cache.invalidate("products:")
+        return result
 
     def record_supplier_payment(
         self, order_id: str, amount: str, payment_method: str = "cash"
@@ -821,13 +841,15 @@ class ApiClient:
     # ---------------------------------------------------------- product import
 
     def import_products_csv(self, store_id: str, file_data: bytes) -> dict:
-        return self._request(
+        result = self._request(
             "POST",
             "/products/import",
             owner=True,
             params={"store_id": store_id},
             files={"file": ("import.csv", file_data, "text/csv")},
         )
+        self.cache.invalidate("products:", "categories:")
+        return result
 
 
 def as_decimal(value: str | None) -> Decimal:

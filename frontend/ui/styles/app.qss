@@ -4,12 +4,25 @@
    Elevation is expressed with borders + surface contrast (no GPU shadows —
    target hardware is old and low-spec). */
 
+/* No universal background: plain container widgets stay TRANSPARENT so they
+   can sit on any surface (a card, a dialog body…) without painting a grey
+   rectangle over it. Only real windows paint the app background; everything
+   else inherits or declares its own surface explicitly. */
 QWidget {
-    background: $background;
     color: $text;
     font-size: $font_base;
     font-family: "Segoe UI", sans-serif;
+    outline: none;
 }
+* {
+    outline: none;
+}
+QMainWindow, QDialog, QMessageBox {
+    background: $background;
+}
+/* Frameless in-app dialogs (ModalDialog) draw a crisp border so they detach
+   cleanly from the window behind them (no native frame, no GPU shadow). */
+QDialog[frameless="true"] { border: 1px solid $border_strong; }
 
 /* =============================== Title bar =============================== */
 
@@ -49,10 +62,12 @@ QWidget {
 
 /* ================================ Sidebar ================================ */
 
+/* Wide enough for the longest label ("Achats & Fournisseurs") — the old
+   190px clipped several entries ("Tableau de bo…", "Achats & Fou…"). */
 #Sidebar {
     background: $sidebar;
-    min-width: 190px;
-    max-width: 190px;
+    min-width: 236px;
+    max-width: 236px;
     border: none;
 }
 #SidebarHeader {
@@ -77,8 +92,8 @@ QWidget {
 #NavButton QLabel { background: transparent; }
 #NavLabel {
     color: $text_on_dark;
-    font-size: $font_md;
-    font-weight: 500;
+    font-size: $font_base;
+    font-weight: 600;
 }
 #NavButton:checked #NavLabel { font-weight: 700; color: white; }
 #NavIndicator { background: transparent; border-radius: 2px; }
@@ -241,7 +256,8 @@ QSpinBox::down-arrow:disabled, QDoubleSpinBox::down-arrow:disabled {
 }
 
 /* Checkboxes / radios */
-QCheckBox, QRadioButton { background: transparent; spacing: 8px; outline: none; }
+QCheckBox, QRadioButton { background: transparent; spacing: 8px; outline: none; border: none; }
+QCheckBox:focus, QRadioButton:focus { outline: none; border: none; }
 QCheckBox::indicator, QRadioButton::indicator { width: 18px; height: 18px; }
 QCheckBox::indicator {
     border: 1px solid $border_strong;
@@ -294,7 +310,10 @@ QPushButton {
 }
 QPushButton:hover { border-color: $primary; color: $primary; background: $primary_subtle; }
 QPushButton:pressed { background: $primary_subtle_hover; }
-QPushButton:focus { border: 2px solid $focus_ring; padding: 6px 13px; }
+/* Keyboard focus: recolor the existing 1px border — NO thicker border and NO
+   padding shift, which used to leave a fat ugly rectangle stuck on whichever
+   button was last clicked. */
+QPushButton:focus { border-color: $focus_ring; outline: none; }
 QPushButton:disabled {
     color: $text_disabled;
     background: $surface_sunken;
@@ -309,8 +328,8 @@ QPushButton#Primary {
 }
 QPushButton#Primary:hover { background: $primary_hover; border-color: $primary_hover; color: $on_primary; }
 QPushButton#Primary:pressed { background: $primary_pressed; border-color: $primary_pressed; }
-QPushButton#Primary:focus { border: 2px solid $neutral_900; padding: 6px 13px; }
-QPushButton#Primary:disabled { background: $border; border-color: $border; color: $surface; }
+QPushButton#Primary:focus { border-color: $primary_pressed; }
+QPushButton#Primary:disabled { background: $border; border-color: $border; color: $text_muted; }
 
 QPushButton#Danger {
     background: transparent;
@@ -319,7 +338,7 @@ QPushButton#Danger {
 }
 QPushButton#Danger:hover { background: $danger; color: white; }
 QPushButton#Danger:pressed { background: $danger_pressed; border-color: $danger_pressed; color: white; }
-QPushButton#Danger:focus { border: 2px solid $danger_pressed; padding: 6px 13px; }
+QPushButton#Danger:focus { border-color: $danger_pressed; }
 QPushButton#Danger:disabled { border-color: $border_light; color: $text_disabled; background: transparent; }
 
 QPushButton#Ghost {
@@ -330,7 +349,7 @@ QPushButton#Ghost {
 }
 QPushButton#Ghost:hover { background: $row_hover; color: $text; }
 QPushButton#Ghost:pressed { background: $border_light; }
-QPushButton#Ghost:focus { border: 2px solid $focus_ring; padding: 5px 8px; }
+QPushButton#Ghost:focus { background: $row_hover; }
 QPushButton#Ghost:disabled { color: $text_disabled; background: transparent; }
 
 /* Big money button (Encaisser) */
@@ -345,7 +364,7 @@ QPushButton#Pay {
 }
 QPushButton#Pay:hover { background: $primary_hover; }
 QPushButton#Pay:pressed { background: $primary_pressed; }
-QPushButton#Pay:disabled { background: $border; border-color: $border; color: $surface; }
+QPushButton#Pay:disabled { background: $border; border-color: $border; color: $text_muted; }
 
 /* Segmented control (price levels) — iOS-style pill track: a sunken rounded
    container with the selected option as a filled pill. Robust: no per-button
@@ -531,11 +550,10 @@ QDialog > QScrollArea { background: $background; border: none; }
 QDialog > QScrollArea > QWidget { background: $background; }
 QDialog > QScrollArea > QWidget > QWidget { background: $background; }
 /* Dialog header band — echoes the dark sidebar for a premium, integrated feel
-   instead of a stark white box floating over the window. */
+   instead of a stark white box floating over the window. The dialog window is
+   frameless: this band IS the title bar (draggable, with its close button). */
 #DialogHeader {
     background: $sidebar;
-    border-top-left-radius: $radius_lg;
-    border-top-right-radius: $radius_lg;
 }
 #DialogHeader QLabel {
     background: transparent;
@@ -543,6 +561,18 @@ QDialog > QScrollArea > QWidget > QWidget { background: $background; }
     font-size: $font_lg;
     font-weight: 700;
 }
+#DialogHeader QPushButton#DialogClose {
+    background: transparent;
+    border: none;
+    border-radius: $radius_sm;
+    min-width: 32px;
+    max-width: 32px;
+    min-height: 28px;
+    max-height: 28px;
+    padding: 0;
+}
+#DialogHeader QPushButton#DialogClose:hover { background: $danger; }
+#DialogHeader QPushButton#DialogClose:pressed { background: $danger_pressed; }
 /* The dialog body sits below the dark band on a soft (non-pure-white) surface
    so inputs and labels read clearly while the dialog no longer clashes with
    the main window's grey background. */
@@ -550,7 +580,10 @@ QDialog > QScrollArea > QWidget > QWidget { background: $background; }
     background: $background;
     border: none;
 }
-#DialogBody QLabel { background: transparent; color: $text; }
+/* Background only — setting a color here would out-rank the ID-styled
+   labels (#TotalAmount, #Muted, #RemainingValue…) inside every dialog;
+   the base text color already comes from the weaker `QDialog QLabel`. */
+#DialogBody QLabel { background: transparent; }
 QMessageBox QLabel { font-size: $font_base; }
 
 /* ---- Payment dialog: total band + selectable mode cards ---- */
@@ -573,9 +606,25 @@ QMessageBox QLabel { font-size: $font_base; }
 }
 #OptionCard QLabel { background: transparent; }
 #OptionTitle { font-size: $font_md; font-weight: 600; color: $text; }
-#RemainingHint { color: $text_secondary; font-size: $font_sm; font-weight: 600; }
 #HDivider { background: $border_light; border: none; }
 #MoneyInput { font-size: $font_md; font-weight: 700; min-height: 30px; }
+/* Partial-payment block: one framed section so the revealed fields read as a
+   single organized card instead of loose controls. */
+#PartialBox {
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: $radius_md;
+}
+#PartialBox QLabel { background: transparent; }
+/* Live "reste à payer" figure next to the amount — the debt being created. */
+#RemainingValue { color: $warning; font-size: $font_lg; font-weight: 700; }
+/* Attached-customer chip (who the credit goes to). */
+#AttachedCustomer {
+    background: $primary_subtle;
+    border: 1px solid $primary_subtle_hover;
+    border-radius: $radius_md;
+}
+#AttachedCustomer QLabel { background: transparent; }
 
 QToolTip {
     background: $chrome_bg;

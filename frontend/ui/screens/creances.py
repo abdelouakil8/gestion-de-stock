@@ -40,9 +40,12 @@ from ui.styles.tokens import NEUTRAL, SEMANTIC, SPACING
 from ui.widgets.badge import Badge
 from ui.widgets.data_table import DataTable
 from ui.widgets.modal import show_error
+from ui.widgets.pagination import PaginationBar
 from ui.widgets.payment_dialogs import RecordPaymentDialog
 from ui.widgets.states import EmptyState, StatefulStack
 from ui.widgets.toast import show_toast
+
+_PAGE_SIZE = 50
 
 
 def _age_kind(days: int) -> str:
@@ -71,6 +74,7 @@ class CreancesScreen(QWidget):
         self.store_id = store_id
         self.credits: list[dict] = []
         self._grouped = False
+        self._page = 0
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(*[SPACING["xl"]] * 4)
@@ -89,7 +93,7 @@ class CreancesScreen(QWidget):
         self.search.setObjectName("SearchInput")
         self.search.setPlaceholderText(strings.CREANCES_SEARCH)
         self.search.setFixedWidth(260)
-        self.search.textChanged.connect(lambda _: self._render())
+        self.search.textChanged.connect(lambda _: self._reset_and_render())
         header.addWidget(self.search)
 
         header.addWidget(self._build_view_toggle())
@@ -154,6 +158,10 @@ class CreancesScreen(QWidget):
         )
         layout.addWidget(self.stack, stretch=1)
 
+        self.pagination = PaginationBar()
+        self.pagination.page_changed.connect(self._on_page_changed)
+        layout.addWidget(self.pagination)
+
     def _build_view_toggle(self) -> QWidget:
         group = QWidget()
         group.setObjectName("SegmentGroup")
@@ -204,6 +212,15 @@ class CreancesScreen(QWidget):
 
     def _set_grouped(self, grouped: bool) -> None:
         self._grouped = grouped
+        self._page = 0
+        self._render()
+
+    def _reset_and_render(self) -> None:
+        self._page = 0
+        self._render()
+
+    def _on_page_changed(self, page: int) -> None:
+        self._page = page
         self._render()
 
     # ------------------------------------------------------------- render
@@ -233,12 +250,18 @@ class CreancesScreen(QWidget):
         rows = self._visible()
         if not rows:
             self.stack.show_empty()
+            self.pagination.set_state(0, 1)
             return
         self.view_stack.setCurrentIndex(1 if self._grouped else 0)
         if self._grouped:
             self._render_grouped(rows)
+            self.pagination.set_state(0, 1)
         else:
-            self._render_flat(rows)
+            total_pages = (len(rows) + _PAGE_SIZE - 1) // _PAGE_SIZE
+            self._page = min(self._page, total_pages - 1)
+            start = self._page * _PAGE_SIZE
+            self._render_flat(rows[start : start + _PAGE_SIZE])
+            self.pagination.set_state(self._page, total_pages)
         self.stack.show_content()
 
     def _render_flat(self, rows: list[dict]) -> None:

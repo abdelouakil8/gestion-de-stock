@@ -5,7 +5,15 @@ Search-and-attach lives in ui.widgets.customer_search.CustomerSearchBox; the
 old CustomerPickerDialog it replaced has been removed."""
 
 import shiboken6
-from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QComboBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 from services.workers import run_api
 from ui import strings
@@ -36,17 +44,34 @@ class CustomerFormDialog(ModalDialog):
         self.store_id = store_id
         self.customer = customer
         self.result_customer: dict | None = None
+        self.setMinimumWidth(480)
 
         self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText(strings.CUSTOMER_NAME)
         self.phone_input = QLineEdit()
+        self.phone_input.setPlaceholderText(strings.CUSTOMER_PHONE)
         self.note_input = QLineEdit()
         self.level_combo = QComboBox()
         self.level_combo.addItem(strings.CUSTOMER_PRICE_LEVEL_NONE, None)
         for value in ("detail", "gros", "super_gros"):
             self.level_combo.addItem(strings.PRICE_LEVEL_LABELS[value], value)
 
-        self.content.addLayout(_labeled_field(strings.CUSTOMER_NAME, self.name_input))
-        self.content.addLayout(_labeled_field(strings.CUSTOMER_PHONE, self.phone_input))
+        # Identity: name + phone side by side (the two required fields).
+        identity_row = QHBoxLayout()
+        identity_row.setSpacing(SPACING["md"])
+        identity_row.addLayout(
+            _labeled_field(strings.CUSTOMER_NAME, self.name_input), stretch=3
+        )
+        identity_row.addLayout(
+            _labeled_field(strings.CUSTOMER_PHONE, self.phone_input), stretch=2
+        )
+        self.content.addLayout(identity_row)
+
+        divider = QFrame()
+        divider.setObjectName("HDivider")
+        divider.setFixedHeight(1)
+        self.content.addWidget(divider)
+
         self.content.addLayout(_labeled_field(strings.CUSTOMER_NOTE, self.note_input))
         self.content.addLayout(
             _labeled_field(strings.CUSTOMER_DEFAULT_PRICE_LEVEL, self.level_combo)

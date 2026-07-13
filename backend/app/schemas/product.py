@@ -85,19 +85,3 @@ class ProductReadWithCost(ProductRead):
     cost_price: Money
 
 
-class LabelConfig(BaseModel):
-    """Barcode label sheet options."""
-
-    size: Literal["58x30", "58x40", "40x25"] = "58x30"
-    show_name: bool = True
-    show_price: bool = True
-    show_barcode: bool = True
-    show_store: bool = False
-    price_level: Literal["detail", "gros", "super_gros"] = "detail"
-    barcode_type: Literal["ean13", "code128"] = "code128"
-    copies: int = Field(default=1, ge=1, le=999)
-
-
-class LabelGenerateRequest(BaseModel):
-    product_ids: list[UUID] = Field(min_length=1)
-    label_config: LabelConfig = LabelConfig()

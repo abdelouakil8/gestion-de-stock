@@ -95,6 +95,14 @@ def test_set_pin_end_to_end(monkeypatch, tmp_path):
         engine.dispose()
 
 
+def test_version_endpoint(client):
+    r = client.get("/api/v1/version")
+    assert r.status_code == 200
+    data = r.json()
+    assert "api_version" in data
+    assert "min_frontend_version" in data
+
+
 def build_catalog(client) -> dict:
     """Store + category + product (40 / 37.50 / 30) via the API itself."""
     store = client.post("/api/v1/stores", json={"name": "Boutique API"}).json()

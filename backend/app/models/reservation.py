@@ -1,3 +1,8 @@
+# NOTE: This model is retained for database schema integrity only.
+# The reservations feature has been removed from the application.
+# Do NOT use this model in any new code. The table is kept to avoid
+# data loss on existing installations.
+
 """Product reservations (layaway / mise de côté).
 
 A reservation HOLDS stock (via Product.reserved_quantity) for a customer

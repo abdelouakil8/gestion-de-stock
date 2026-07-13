@@ -34,11 +34,20 @@ try:
     import uvicorn
     from loguru import logger
     from PySide6.QtCore import Qt, QTimer
-    from PySide6.QtWidgets import QApplication, QMessageBox
+    from PySide6.QtGui import QPainter
+    from PySide6.QtWidgets import (
+        QApplication,
+        QMessageBox,
+        QProxyStyle,
+        QStyle,
+        QStyleOption,
+        QStyleOptionComplex,
+    )
 
     from app.core.config import settings
     from app.main import app as fastapi_app
     from services.api_client import ApiClient, ApiError
+    from services.updater import CURRENT_VERSION
     from ui import strings
     from ui.screens.login import LoginDialog
     from ui.screens.main_window import MainWindow
@@ -49,6 +58,10 @@ except Exception:
     raise
 
 DEFAULT_STORE_NAME = "Ma Boutique"
+
+
+def _parse_semver(v: str) -> tuple[int, ...]:
+    return tuple(int(p) for p in v.lstrip("v").split(".") if p.isdigit())
 
 
 def start_api_server() -> uvicorn.Server:
@@ -155,6 +168,51 @@ def _theme_from_settings(store_settings: dict) -> tuple[str, str, dict]:
     )
 
 
+class NoFocusProxyStyle(QProxyStyle):
+    """A proxy style that completely disables native focus rectangles.
+
+    QSS `outline: none` does not reliably suppress the native focus rect.
+    Intercepting PE_FrameFocusRect works for some widgets, but QCheckBox and
+    others use CE_CheckBoxLabel which natively draws the focus rect. We strip
+    the focus state entirely before the native engine paints, ensuring no OS
+    focus boxes are ever drawn (our QSS handles focus visibility).
+    """
+
+    def drawPrimitive(
+        self,
+        element: QStyle.PrimitiveElement,
+        option: QStyleOption,
+        painter: QPainter,
+        widget=None,
+    ) -> None:
+        if element == QStyle.PrimitiveElement.PE_FrameFocusRect:
+            return  # Do nothing
+        super().drawPrimitive(element, option, painter, widget)
+
+    def drawControl(
+        self,
+        element: QStyle.ControlElement,
+        option: QStyleOption,
+        painter: QPainter,
+        widget=None,
+    ) -> None:
+        if option and (option.state & QStyle.StateFlag.State_HasFocus):
+            # Strip focus state so native engine never paints its focus visuals
+            option.state &= ~QStyle.StateFlag.State_HasFocus
+        super().drawControl(element, option, painter, widget)
+
+    def drawComplexControl(
+        self,
+        element: QStyle.ComplexControl,
+        option: QStyleOptionComplex,
+        painter: QPainter,
+        widget=None,
+    ) -> None:
+        if option and (option.state & QStyle.StateFlag.State_HasFocus):
+            option.state &= ~QStyle.StateFlag.State_HasFocus
+        super().drawComplexControl(element, option, painter, widget)
+
+
 def _apply_theme(qt_app: QApplication, accent=None, mode=None, overrides=None) -> None:
     """Apply the full theme: Fusion base, the QSS, and a matching QPalette.
 
@@ -163,6 +221,7 @@ def _apply_theme(qt_app: QApplication, accent=None, mode=None, overrides=None) -
     (that was the solid-black dialog background). Works for light AND dark.
     """
     qt_app.setStyle("Fusion")
+    qt_app.setStyle(NoFocusProxyStyle(qt_app.style()))
     qt_app.setStyleSheet(render_qss(accent, mode, overrides))
     qt_app.setPalette(tokens.build_palette())
 
@@ -194,6 +253,24 @@ def main() -> int:
         return 1
 
     api = ApiClient(settings.api_host, settings.api_port)
+
+    try:
+        ver = api.check_version()
+        min_fe = ver.get("min_frontend_version", "0.0.0")
+        if _parse_semver(CURRENT_VERSION) < _parse_semver(min_fe):
+            QMessageBox.critical(
+                None,
+                strings.VERSION_MISMATCH_TITLE,
+                strings.VERSION_MISMATCH_TEXT.format(
+                    frontend=CURRENT_VERSION,
+                    api=ver.get("api_version", "?"),
+                    min_fe=min_fe,
+                ),
+            )
+            return 1
+    except ApiError:
+        pass
+
     try:
         store = bootstrap_store(api)
     except ApiError as exc:
@@ -240,8 +317,14 @@ def main() -> int:
         bool(os.environ.get("POS_FORCE_RTL")),
     )
 
-    window = MainWindow(api, store)
-    window.show()
+    # Building the shell takes a moment on old hardware — show a busy cursor
+    # instead of a dead gap between the PIN dialog and the window.
+    qt_app.setOverrideCursor(Qt.CursorShape.WaitCursor)
+    try:
+        window = MainWindow(api, store)
+        window.show()
+    finally:
+        qt_app.restoreOverrideCursor()
 
     if smoke_test:
         QTimer.singleShot(4000, qt_app.quit)

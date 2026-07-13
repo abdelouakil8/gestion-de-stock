@@ -20,5 +20,5 @@ select = ["E", "F", "I", "UP", "B"]
 "backend/alembic/versions/*" = ["E501"]
 
 [tool.pytest.ini_options]
-testpaths = ["backend/tests"]
-pythonpath = ["backend"]
+testpaths = ["backend/tests", "frontend/tests"]
+pythonpath = ["backend", "frontend"]

@@ -19,16 +19,20 @@ from app.schemas.statistics import (
     FinancialSnapshot,
     FrequentItemset,
     InventoryStats,
+    MarginAnalysis,
     OverviewStats,
     PaymentMethodBreakdown,
+    ProductProfitability,
     ProductRef,
     ProductStats,
+    ProductVelocity,
     SalesPatterns,
     StatsSummary,
+    StockTurnover,
     TopCustomer,
     TopProduct,
 )
-from app.services import customers, reports, statistics, stores
+from app.services import customers, profitability, reports, statistics, stores, velocity
 from app.services import settings as settings_service
 from app.services.analysis import apriori, baskets
 
@@ -252,6 +256,62 @@ def associations(
             for r in result.rules
         ],
     )
+
+
+@router.get(
+    "/profitability",
+    response_model=list[ProductProfitability],
+    dependencies=[OwnerPinDep],
+)
+def profitability_ranking(
+    store_id: UUID,
+    date_from: date,
+    date_to: date,
+    db: DbDep,
+    limit: int = Query(default=20, ge=1, le=100),
+    sort: str = Query(default="profit", pattern="^(profit|margin_pct)$"),
+) -> list:
+    start, end = _day_bounds(date_from, date_to)
+    return profitability.product_profitability(
+        db, store_id, start, end, limit=limit, sort=sort
+    )
+
+
+@router.get(
+    "/margin-analysis",
+    response_model=MarginAnalysis,
+    dependencies=[OwnerPinDep],
+)
+def margin_analysis(store_id: UUID, date_from: date, date_to: date, db: DbDep):
+    start, end = _day_bounds(date_from, date_to)
+    return profitability.margin_analysis(db, store_id, start, end)
+
+
+@router.get(
+    "/velocity",
+    response_model=list[ProductVelocity],
+    dependencies=[OwnerPinDep],
+)
+def velocity_ranking(
+    store_id: UUID,
+    date_from: date,
+    date_to: date,
+    db: DbDep,
+    limit: int = Query(default=20, ge=1, le=100),
+    sort: str = Query(default="velocity", pattern="^(velocity|days_of_stock)$"),
+) -> list:
+    start, end = _day_bounds(date_from, date_to)
+    return velocity.product_velocity(db, store_id, start, end, limit=limit, sort=sort)
+
+
+@router.get(
+    "/stock-turnover",
+    response_model=StockTurnover,
+    dependencies=[OwnerPinDep],
+)
+def turnover(store_id: UUID, date_from: date, date_to: date, db: DbDep):
+    start, end = _day_bounds(date_from, date_to)
+    return velocity.stock_turnover(db, store_id, start, end)
 
 
 @router.get("/report.pdf", dependencies=[OwnerPinDep])

@@ -11,7 +11,6 @@ from app.api.routes import (
     promotions,
     purchase_orders,
     refunds,
-    reservations,
     sales,
     settings,
     statistics,
@@ -19,8 +18,18 @@ from app.api.routes import (
     suppliers,
     users,
 )
+from app.core.version import APP_VERSION, MIN_FRONTEND_VERSION
 
 api_router = APIRouter()
+
+
+@api_router.get("/version", tags=["meta"])
+def version() -> dict:
+    return {
+        "api_version": APP_VERSION,
+        "min_frontend_version": MIN_FRONTEND_VERSION,
+    }
+
 
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
@@ -29,9 +38,6 @@ api_router.include_router(categories.router, prefix="/categories", tags=["catego
 api_router.include_router(products.router, prefix="/products", tags=["products"])
 api_router.include_router(promotions.router, prefix="/promotions", tags=["promotions"])
 api_router.include_router(customers.router, prefix="/customers", tags=["customers"])
-api_router.include_router(
-    reservations.router, prefix="/reservations", tags=["reservations"]
-)
 api_router.include_router(sales.router, prefix="/sales", tags=["sales"])
 api_router.include_router(statistics.router, prefix="/statistics", tags=["statistics"])
 api_router.include_router(alerts.router, prefix="/alerts", tags=["alerts"])

@@ -22,9 +22,9 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPushButton,
     QRadioButton,
     QVBoxLayout,
-    QWidget,
 )
 
 from services.workers import run_api
@@ -124,6 +124,7 @@ class CheckoutPaymentDialog(ModalDialog):
         self.total = total
         self.customer = customer
         self.payment: dict | None = None
+        self.setMinimumWidth(520)
 
         # Total-to-pay hero band.
         total_card = QFrame()
@@ -131,7 +132,7 @@ class CheckoutPaymentDialog(ModalDialog):
         total_card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         total_row = QHBoxLayout(total_card)
         total_row.setContentsMargins(
-            SPACING["md"], SPACING["sm"], SPACING["md"], SPACING["sm"]
+            SPACING["lg"], SPACING["md"], SPACING["lg"], SPACING["md"]
         )
         total_caption = QLabel(strings.PAYMENT_TOTAL_LABEL)
         total_caption.setObjectName("Secondary")
@@ -163,23 +164,41 @@ class CheckoutPaymentDialog(ModalDialog):
         self.content.addWidget(self.partial_option)
         self.full_radio.setChecked(True)
 
-        # Partial section (hidden until the partial mode is chosen).
-        self.partial_box = QWidget()
+        # Partial section (hidden until the partial mode is chosen) — one
+        # framed card so the revealed block reads as a single tidy section.
+        self.partial_box = QFrame()
+        self.partial_box.setObjectName("PartialBox")
+        self.partial_box.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         partial_layout = QVBoxLayout(self.partial_box)
-        partial_layout.setContentsMargins(0, SPACING["xs"], 0, 0)
+        partial_layout.setContentsMargins(
+            SPACING["lg"], SPACING["md"], SPACING["lg"], SPACING["md"]
+        )
         partial_layout.setSpacing(SPACING["sm"])
 
         amount_label = QLabel(strings.PAYMENT_AMOUNT_LABEL)
         amount_label.setObjectName("Caption")
         partial_layout.addWidget(amount_label)
+
+        amount_row = QHBoxLayout()
+        amount_row.setSpacing(SPACING["md"])
         self.amount_input = _MoneySpin(max(0.0, float(total) - 0.01))
         self.amount_input.setObjectName("MoneyInput")
         self.amount_input.valueChanged.connect(self._update_remaining)
-        partial_layout.addWidget(self.amount_input)
-
+        amount_row.addWidget(self.amount_input, stretch=1)
+        remaining_box = QVBoxLayout()
+        remaining_box.setSpacing(0)
+        remaining_caption = QLabel(strings.PAYMENT_REMAINING_LABEL)
+        remaining_caption.setObjectName("Caption")
+        remaining_box.addWidget(
+            remaining_caption, alignment=Qt.AlignmentFlag.AlignRight
+        )
         self.remaining_label = QLabel("")
-        self.remaining_label.setObjectName("RemainingHint")
-        partial_layout.addWidget(self.remaining_label)
+        self.remaining_label.setObjectName("RemainingValue")
+        remaining_box.addWidget(
+            self.remaining_label, alignment=Qt.AlignmentFlag.AlignRight
+        )
+        amount_row.addLayout(remaining_box)
+        partial_layout.addLayout(amount_row)
 
         divider = QFrame()
         divider.setObjectName("HDivider")
@@ -190,13 +209,30 @@ class CheckoutPaymentDialog(ModalDialog):
         client_head.setObjectName("Caption")
         partial_layout.addWidget(client_head)
 
-        # Attached-customer line (shown once a customer is picked/created).
-        customer_row = QHBoxLayout()
-        customer_row.addWidget(QLabel(strings.CHECKOUT_CUSTOMER_LABEL))
+        # Attached-customer chip (shown once a customer is picked/created):
+        # who the credit goes to + a button to change your mind.
+        self.attached_row = QFrame()
+        self.attached_row.setObjectName("AttachedCustomer")
+        self.attached_row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        attached_layout = QHBoxLayout(self.attached_row)
+        attached_layout.setContentsMargins(
+            SPACING["md"], SPACING["sm"], SPACING["md"], SPACING["sm"]
+        )
+        attached_layout.setSpacing(SPACING["sm"])
+        attached_icon = QLabel()
+        attached_icon.setPixmap(
+            qta.icon("fa5s.user-check", color=tokens.CURRENT_ACCENT).pixmap(18, 18)
+        )
+        attached_layout.addWidget(attached_icon)
         self.customer_label = QLabel("")
-        self.customer_label.setObjectName("Secondary")
-        customer_row.addWidget(self.customer_label, stretch=1)
-        partial_layout.addLayout(customer_row)
+        self.customer_label.setObjectName("OptionTitle")
+        attached_layout.addWidget(self.customer_label, stretch=1)
+        change_button = QPushButton(strings.PAYMENT_CHANGE_CUSTOMER)
+        change_button.setObjectName("Ghost")
+        change_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        change_button.clicked.connect(self._detach_customer)
+        attached_layout.addWidget(change_button)
+        partial_layout.addWidget(self.attached_row)
 
         # Attach an existing customer (search by name/phone).
         self.attach_existing_label = QLabel(strings.PAYMENT_ATTACH_EXISTING)
@@ -220,11 +256,9 @@ class CheckoutPaymentDialog(ModalDialog):
         self.new_phone_input.setPlaceholderText(strings.PAYMENT_NEW_CUSTOMER_PHONE)
         name_phone_row.addWidget(self.new_phone_input, stretch=2)
         partial_layout.addLayout(name_phone_row)
-
-        self.customer_hint = QLabel(strings.PAYMENT_CUSTOMER_REQUIRED)
-        self.customer_hint.setObjectName("FieldError")
-        self.customer_hint.setWordWrap(True)
-        partial_layout.addWidget(self.customer_hint)
+        # No always-on reminder text: the section header already says the
+        # customer is mandatory, and accept() explains if it is missing —
+        # keeps the dialog short enough for small (720p-logical) screens.
 
         self.content.addWidget(self.partial_box)
         self.partial_box.setVisible(False)
@@ -249,8 +283,7 @@ class CheckoutPaymentDialog(ModalDialog):
             self.amount_input.setFocus()
             self.amount_input.selectAll()
         # The partial block is shown/hidden after first layout — grow/shrink
-        # the dialog to fit it (a plain adjustSize can't, the scroll area's
-        # size hint is frozen from construction).
+        # the dialog to fit it, re-centered (fit_to_content handles both).
         self.fit_to_content()
 
     def _on_customer_attached(self, customer: dict) -> None:
@@ -258,16 +291,20 @@ class CheckoutPaymentDialog(ModalDialog):
         self.customer_search.clear()
         self._refresh_customer()
 
+    def _detach_customer(self) -> None:
+        self.customer = None
+        self._refresh_customer()
+        self.customer_search.set_focus()
+
     def _refresh_customer(self) -> None:
         attached = bool(self.customer)
         if attached:
             self.customer_label.setText(
                 f"{self.customer['name']} · {self.customer['phone']}"
             )
-        else:
-            self.customer_label.setText(strings.CHECKOUT_CUSTOMER_ANONYMOUS)
-        # A customer is attached -> hide every attach/create affordance;
-        # otherwise show the search + inline-create fields.
+        # A customer is attached -> show the chip and hide every attach/create
+        # affordance; otherwise show the search + inline-create fields.
+        self.attached_row.setVisible(attached)
         for widget in (
             self.attach_existing_label,
             self.customer_search,
@@ -276,16 +313,13 @@ class CheckoutPaymentDialog(ModalDialog):
             self.new_phone_input,
         ):
             widget.setVisible(not attached)
-        self.customer_hint.setVisible(not attached)
         # Attaching/detaching changes the block height while it is shown.
         if self.partial_box.isVisible():
             self.fit_to_content()
 
     def _update_remaining(self) -> None:
         remaining = self.total - self.amount_input.decimal()
-        self.remaining_label.setText(
-            f"{strings.PAYMENT_REMAINING_LABEL} : {fmt.fmt_money(remaining)}"
-        )
+        self.remaining_label.setText(fmt.fmt_money(remaining))
 
     # ------------------------------------------------------------- accept
 

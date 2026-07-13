@@ -33,9 +33,12 @@ from ui.widgets.card import SectionCard, StatCard
 from ui.widgets.customer_dialogs import CustomerFormDialog
 from ui.widgets.data_table import DataTable
 from ui.widgets.modal import show_error
+from ui.widgets.pagination import PaginationBar
 from ui.widgets.payment_dialogs import RecordPaymentDialog
 from ui.widgets.states import EmptyState
 from ui.widgets.toast import show_toast
+
+_PAGE_SIZE = 50
 
 
 class CustomersScreen(QWidget):
@@ -46,6 +49,7 @@ class CustomersScreen(QWidget):
         self.customers: list[dict] = []
         self.selected: dict | None = None
         self.customer_sales: list[dict] = []
+        self._page = 0
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(*[SPACING["xl"]] * 4)
@@ -78,13 +82,17 @@ class CustomersScreen(QWidget):
         self._search_debounce = QTimer(self)
         self._search_debounce.setSingleShot(True)
         self._search_debounce.setInterval(250)
-        self._search_debounce.timeout.connect(self.refresh_list)
+        self._search_debounce.timeout.connect(self._search_and_reset)
         self.search.textChanged.connect(lambda _: self._search_debounce.start())
         left.addWidget(self.search)
 
         self.list = QListWidget()
         self.list.currentItemChanged.connect(self._on_selected)
         left.addWidget(self.list, stretch=1)
+
+        self.pagination = PaginationBar()
+        self.pagination.page_changed.connect(self._on_customer_page)
+        left.addWidget(self.pagination)
 
         left_holder = QWidget()
         left_holder.setLayout(left)
@@ -202,6 +210,10 @@ class CustomersScreen(QWidget):
         self.refresh_list()
         self._load_top_customers()
 
+    def _search_and_reset(self) -> None:
+        self._page = 0
+        self.refresh_list()
+
     def refresh_list(self) -> None:
         query = self.search.text().strip() or None
         run_api(
@@ -219,7 +231,7 @@ class CustomersScreen(QWidget):
                 self.store_id, date_from, date_to, limit=20
             ),
             self._on_top_customers,
-            lambda err: None,  # ranking is a bonus; PIN errors show elsewhere
+            lambda err: None,
         )
 
     def _on_top_customers(self, top: object) -> None:
@@ -232,10 +244,18 @@ class CustomersScreen(QWidget):
 
     def _on_customers(self, customers: object) -> None:
         self.customers = list(customers)
+        self._display_customer_page()
+
+    def _display_customer_page(self) -> None:
+        total_pages = max(1, (len(self.customers) + _PAGE_SIZE - 1) // _PAGE_SIZE)
+        self._page = min(self._page, total_pages - 1)
+        start = self._page * _PAGE_SIZE
+        page_items = self.customers[start : start + _PAGE_SIZE]
+
         selected_id = self.selected["id"] if self.selected else None
         self.list.blockSignals(True)
         self.list.clear()
-        for customer in self.customers:
+        for customer in page_items:
             item = QListWidgetItem(f"{customer['name']}\n{customer['phone']}")
             item.setData(Qt.ItemDataRole.UserRole, customer)
             self.list.addItem(item)
@@ -243,11 +263,17 @@ class CustomersScreen(QWidget):
                 self.list.setCurrentItem(item)
         self.list.blockSignals(False)
 
+        self.pagination.set_state(self._page, total_pages)
+
         if not self.customers and not self.search.text().strip():
             self.panel_stack.setCurrentWidget(self.empty)
             self.selected = None
         elif self.selected is None:
             self.panel_stack.setCurrentIndex(0)
+
+    def _on_customer_page(self, page: int) -> None:
+        self._page = page
+        self._display_customer_page()
 
     # ----------------------------------------------------------- selection
 
