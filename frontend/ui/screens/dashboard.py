@@ -33,10 +33,10 @@ from ui.widgets.charts import LineChart, LinePoint
 
 # KPI palette: (foreground, subtle tint) — decorative, kept out of the
 # themeable accent tokens so the board stays colourful under any accent.
-_KPI_GREEN = ("#16A34A", "#DCFCE7")
-_KPI_BLUE = ("#2563EB", "#DBEAFE")
-_KPI_RED = ("#DC2626", "#FEE2E2")
-_KPI_ORANGE = ("#D97706", "#FEF3C7")
+_KPI_GREEN = ("#16A34A", "success")
+_KPI_BLUE = ("#2563EB", "primary")
+_KPI_RED = ("#DC2626", "danger")
+_KPI_ORANGE = ("#D97706", "warning")
 
 _TOP_BAR_COLOR = "#2563EB"
 
@@ -49,7 +49,7 @@ class KpiBorderCard(QFrame):
     horizontal layout, so it mirrors correctly to the right under RTL.
     """
 
-    def __init__(self, caption, icon, color, bg, on_click=None, parent=None) -> None:
+    def __init__(self, caption, icon, color, kpi_type, on_click=None, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("Card")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -65,8 +65,8 @@ class KpiBorderCard(QFrame):
         strip.setFixedWidth(4)
         strip.setStyleSheet(
             f"background: {color}; "
-            f"border-top-left-radius: {RADIUS['md']}px; "
-            f"border-bottom-left-radius: {RADIUS['md']}px;"
+            f"border-radius: 2px; "
+            f"margin: {SPACING['lg']}px 0px;"
         )
         outer.addWidget(strip)
 
@@ -83,7 +83,8 @@ class KpiBorderCard(QFrame):
         chip.setPixmap(
             qta.icon(icon, color=color).pixmap(ICON_SIZES["lg"], ICON_SIZES["lg"])
         )
-        chip.setStyleSheet(f"background: {bg}; border-radius: {RADIUS['md']}px;")
+        chip.setObjectName("KpiChip")
+        chip.setProperty("kpi", kpi_type)
         top.addWidget(chip)
         caption_label = QLabel(caption)
         caption_label.setObjectName("StatCardTitle")

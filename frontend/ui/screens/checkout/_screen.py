@@ -159,7 +159,7 @@ class CheckoutScreen(QWidget):
             item = self.table.horizontalHeaderItem(column)
             if item is not None:
                 item.setTextAlignment(
-                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter
                 )
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(_CART_THUMB + 6)
@@ -495,7 +495,7 @@ class CheckoutScreen(QWidget):
                 QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
             )
             price_spin.setAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter
             )
             price_spin.valueChanged.connect(
                 lambda value, target=line: self._on_manual_price_changed(target, value)
@@ -510,7 +510,7 @@ class CheckoutScreen(QWidget):
             qty.setFixedHeight(_CELL_CONTROL_H)
             qty.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             qty.setAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter
             )
             qty.setValue(line.quantity)
             qty.valueChanged.connect(
@@ -527,7 +527,7 @@ class CheckoutScreen(QWidget):
                 QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
             )
             discount_spin.setAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter
             )
             discount_spin.setValue(int(line.discount_percent))
             discount_spin.setToolTip(strings.CHECKOUT_DISCOUNT_TIP)
@@ -538,7 +538,7 @@ class CheckoutScreen(QWidget):
 
             total_item = QTableWidgetItem(fmt.fmt_money(line.total))
             total_item.setTextAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter
             )
             if line.packaging:
                 total_item.setToolTip(

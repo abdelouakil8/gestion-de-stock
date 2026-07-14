@@ -19,11 +19,11 @@ from ui.widgets.badge import DeltaChip
 from ui.widgets.card import Card
 from ui.widgets.modal import ModalDialog
 
-_KPI_BLUE = ("#2563EB", "#DBEAFE")
-_KPI_GREEN = ("#16A34A", "#DCFCE7")
-_KPI_VIOLET = ("#7C3AED", "#EDE9FE")
-_KPI_AMBER = ("#D97706", "#FEF3C7")
-_KPI_RED = ("#DC2626", "#FEE2E2")
+_KPI_BLUE = ("#2563EB", "primary")
+_KPI_GREEN = ("#16A34A", "success")
+_KPI_VIOLET = ("#7C3AED", "violet")
+_KPI_AMBER = ("#D97706", "warning")
+_KPI_RED = ("#DC2626", "danger")
 
 _CAT_PALETTE = ["#2563EB", "#16A34A", "#D97706", "#7C3AED", "#0D9488", "#DB2777"]
 
@@ -32,7 +32,7 @@ class KpiCard(Card):
     """Headline metric: colored icon chip + caption, big value, and an
     insight line that can carry a comparison chip (delta vs previous)."""
 
-    def __init__(self, caption, icon, color, bg, show_delta=False, parent=None) -> None:
+    def __init__(self, caption, icon, color, kpi_type, show_delta=False, parent=None) -> None:
         super().__init__(parent)
         top = QHBoxLayout()
         top.setSpacing(SPACING["sm"])
@@ -42,7 +42,8 @@ class KpiCard(Card):
         chip.setPixmap(
             qta.icon(icon, color=color).pixmap(ICON_SIZES["lg"], ICON_SIZES["lg"])
         )
-        chip.setStyleSheet(f"background: {bg}; border-radius: {RADIUS['md']}px;")
+        chip.setObjectName("KpiChip")
+        chip.setProperty("kpi", kpi_type)
         top.addWidget(chip)
         caption_label = QLabel(caption)
         caption_label.setObjectName("StatCardTitle")
@@ -129,7 +130,7 @@ class RankBars(QWidget):
 
         track = QFrame()
         track.setFixedHeight(12)
-        track.setStyleSheet(f"background: {NEUTRAL['200']}; border-radius: 6px;")
+        track.setObjectName("RankTrack")
         tl = QHBoxLayout(track)
         tl.setContentsMargins(0, 0, 0, 0)
         tl.setSpacing(0)
@@ -145,7 +146,7 @@ class RankBars(QWidget):
         value = QLabel(value_text)
         value.setObjectName("Muted")
         value.setFixedWidth(72)
-        value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        value.setAlignment(Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(value)
         return row
 

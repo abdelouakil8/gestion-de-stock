@@ -145,7 +145,7 @@ class SupplierPaymentDialog(ModalDialog):
         self.amount_input.setRange(0.0, float(self.balance))
         self.amount_input.setValue(float(self.balance))
         self.amount_input.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter
         )
         amount_row.addWidget(self.amount_input, stretch=1)
         self.content.addLayout(amount_row)
@@ -202,7 +202,7 @@ class _POLineRow(QWidget):
         self.qty.setValue(1)
         self.qty.setFixedWidth(80)
         self.qty.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter
         )
         self.qty.valueChanged.connect(lambda _=None: self._recompute())
         layout.addWidget(self.qty)
@@ -212,7 +212,7 @@ class _POLineRow(QWidget):
         self.unit_cost.setRange(0.0, 9_999_999.99)
         self.unit_cost.setFixedWidth(120)
         self.unit_cost.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter
         )
         self.unit_cost.valueChanged.connect(lambda _=None: self._recompute())
         layout.addWidget(self.unit_cost)
@@ -220,7 +220,7 @@ class _POLineRow(QWidget):
         self.total_label = QLabel(fmt.fmt_money(0))
         self.total_label.setFixedWidth(120)
         self.total_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter
         )
         layout.addWidget(self.total_label)
 

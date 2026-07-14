@@ -203,7 +203,7 @@ class SettingsScreen(QWidget):
             qta.icon("fa5s.play", color=NEUTRAL["600"]), "Démarrer la visite"
         )
         tour_btn.clicked.connect(self._start_tour)
-        tour_card.body.addWidget(tour_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        tour_card.body.addWidget(tour_btn, alignment=Qt.AlignmentFlag.AlignLeading)
         left.addWidget(tour_card)
 
         # -------------------------------------------------- appearance
@@ -314,7 +314,7 @@ class SettingsScreen(QWidget):
         )
         reset_button.setObjectName("Danger")
         reset_button.clicked.connect(self._factory_reset)
-        danger_card.body.addWidget(reset_button, alignment=Qt.AlignmentFlag.AlignLeft)
+        danger_card.body.addWidget(reset_button, alignment=Qt.AlignmentFlag.AlignLeading)
         left.addWidget(danger_card)
         left.addStretch(1)
 

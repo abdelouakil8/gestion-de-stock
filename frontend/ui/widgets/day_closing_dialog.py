@@ -85,7 +85,7 @@ class DayClosingDialog(ModalDialog):
         self.physical_input = QDoubleSpinBox()
         self.physical_input.setDecimals(2)
         self.physical_input.setMaximum(99_999_999.99)
-        self.physical_input.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.physical_input.setAlignment(Qt.AlignmentFlag.AlignTrailing)
         self.physical_input.valueChanged.connect(self._update_gap)
         self.content.addWidget(self.physical_input)
 

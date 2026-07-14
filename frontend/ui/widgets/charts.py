@@ -174,7 +174,7 @@ class LineChart(QWidget):
             )
             painter.drawText(
                 QRectF(0, y - 9, pad_left - 6, 18),
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter,
                 label,
             )
             painter.setPen(QPen(grid_color, 1))
@@ -288,7 +288,7 @@ class LineChart(QWidget):
             text_width = painter.fontMetrics().horizontalAdvance(text)
             painter.drawText(
                 QRectF(x + 13, mid - 9, text_width + 4, 18),
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignLeading | Qt.AlignmentFlag.AlignVCenter,
                 text,
             )
             x += 13 + text_width + 18
@@ -461,7 +461,7 @@ class DonutChart(QWidget):
             painter.setPen(text_color)
             painter.drawText(
                 QRectF(x + 22, row_y, w * 0.58, row_h),
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignLeading | Qt.AlignmentFlag.AlignVCenter,
                 label,
             )
             # Percentage on the trailing edge (the exact amount lives in the
@@ -471,7 +471,7 @@ class DonutChart(QWidget):
             painter.setFont(value_font)
             painter.drawText(
                 QRectF(x + w * 0.58, row_y, w * 0.40, row_h),
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter,
                 fmt.fmt_percent(share),
             )
 

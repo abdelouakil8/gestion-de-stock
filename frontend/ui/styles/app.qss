@@ -683,6 +683,20 @@ QToolTip {
 #Badge[kind="accent"]  { background: $primary_subtle; color: $primary_text_subtle; }
 #Badge[kind="neutral"] { background: $neutral_200;    color: $neutral_600; }
 
+/* KPI Chips */
+#KpiChip { border-radius: $radius_md; }
+#KpiChip[kpi="primary"] { background: $primary_subtle; }
+#KpiChip[kpi="success"] { background: $success_subtle; }
+#KpiChip[kpi="warning"] { background: $warning_subtle; }
+#KpiChip[kpi="danger"]  { background: $danger_subtle; }
+#KpiChip[kpi="violet"]  { background: $neutral_200; } /* Fallback to neutral for decorative extra color */
+
+/* RankBars track (Statistiques) */
+#RankTrack {
+    background: $neutral_200;
+    border-radius: 6px;
+}
+
 /* Avatar / thumbnail letter fallback */
 #Thumb {
     border-radius: $radius_md;

@@ -52,16 +52,16 @@ def print_pdf(path: Path, printer: str | None = None) -> None:
     if os.name != "nt":  # dev fallback on non-Windows
         subprocess.Popen(["xdg-open", str(path)])
         return
-    if printer:
-        import ctypes
+    import ctypes
 
-        # ShellExecuteW "printto" prints to a NAMED printer via the default
-        # PDF handler — the standard silent path on Windows.
+    if printer:
         ctypes.windll.shell32.ShellExecuteW(
             None, "printto", str(path), f'"{printer}"', None, 0
         )
     else:
-        os.startfile(str(path), "print")  # noqa: S606 (Windows default printer)
+        ctypes.windll.shell32.ShellExecuteW(
+            None, "print", str(path), None, None, 0
+        )
     logger.info("Receipt sent to printer | printer={}", printer or "(default)")
 
 

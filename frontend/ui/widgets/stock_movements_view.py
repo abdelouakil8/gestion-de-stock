@@ -282,7 +282,7 @@ class StockMovementsView(QWidget):
         label.setStyleSheet(
             f"color: {color}; font-weight: 700; background: transparent;"
         )
-        label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        label.setAlignment(Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(label)
         return holder
 

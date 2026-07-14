@@ -53,14 +53,14 @@ class _RefundItemRow(QWidget):
         price_label = QLabel(fmt.fmt_money(item["unit_price"]))
         price_label.setFixedWidth(80)
         price_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter
         )
         layout.addWidget(price_label)
 
         self.subtotal_label = QLabel("0.00")
         self.subtotal_label.setFixedWidth(90)
         self.subtotal_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter
         )
         self.subtotal_label.setStyleSheet("font-weight: 600; background: transparent;")
         layout.addWidget(self.subtotal_label)

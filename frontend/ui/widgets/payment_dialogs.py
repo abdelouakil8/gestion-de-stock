@@ -41,7 +41,7 @@ class _MoneySpin(QDoubleSpinBox):
         super().__init__(parent)
         self.setDecimals(2)
         self.setRange(0.0, maximum)
-        self.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.setAlignment(Qt.AlignmentFlag.AlignTrailing)
 
     def decimal(self) -> Decimal:
         return Decimal(f"{self.value():.2f}")
@@ -190,12 +190,12 @@ class CheckoutPaymentDialog(ModalDialog):
         remaining_caption = QLabel(strings.PAYMENT_REMAINING_LABEL)
         remaining_caption.setObjectName("Caption")
         remaining_box.addWidget(
-            remaining_caption, alignment=Qt.AlignmentFlag.AlignRight
+            remaining_caption, alignment=Qt.AlignmentFlag.AlignTrailing
         )
         self.remaining_label = QLabel("")
         self.remaining_label.setObjectName("RemainingValue")
         remaining_box.addWidget(
-            self.remaining_label, alignment=Qt.AlignmentFlag.AlignRight
+            self.remaining_label, alignment=Qt.AlignmentFlag.AlignTrailing
         )
         amount_row.addLayout(remaining_box)
         partial_layout.addLayout(amount_row)
