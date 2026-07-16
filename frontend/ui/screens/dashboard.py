@@ -27,7 +27,7 @@ from services.workers import run_api
 from ui import format as fmt
 from ui import strings
 from ui.screens.statistics import RankBars
-from ui.styles.tokens import ICON_SIZES, NEUTRAL, RADIUS, SPACING
+from ui.styles.tokens import ICON_SIZES, NEUTRAL, SPACING
 from ui.widgets.card import SectionCard
 from ui.widgets.charts import LineChart, LinePoint
 

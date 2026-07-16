@@ -515,6 +515,11 @@ INVENTORY_DETAIL_HINT = "Double-clic sur un produit : fiche détaillée et stati
 INVENTORY_TAB_PRODUCTS = "Produits"
 INVENTORY_TAB_MOVEMENTS = "Mouvements de stock"
 INVENTORY_ADJUST_BUTTON = "Ajustement inventaire"
+STOCK_RECEIVE_BUTTON = "Réceptionner"
+STOCK_RECEIVE_PROMPT = "Quantité à ajouter pour {name} :"
+STOCK_RECEIVE_TOAST = "{qty} unités ajoutées à {name}."
+LABEL_SENT_TOAST = "Étiquette envoyée à l'imprimante."
+EXPORT_WRITE_ERROR = "Erreur d'écriture : {error}"
 INVENTORY_LABELS_BUTTON = "Imprimer étiquettes"
 
 # ======================================================================

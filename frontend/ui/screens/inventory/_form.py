@@ -290,7 +290,7 @@ class ProductDialog(ModalDialog):
             label_printer.print_barcode_label(product, printer, copies=1)
             from ui.widgets.toast import show_toast
 
-            show_toast(self, "Étiquette envoyée à l'imprimante.")
+            show_toast(self, strings.LABEL_SENT_TOAST)
         except Exception as e:
             from ui.widgets.modal import show_error as _show_error
 

@@ -122,7 +122,9 @@ def search_products(client, store_id, q=None, limit=None, active_only=None):
         params["active_only"] = active_only
     resp = client.get("/api/v1/products", params=params)
     assert resp.status_code == 200, resp.text
-    return resp.json()
+    # /products returns a paginated envelope {items, total}; these helpers
+    # historically returned a bare list, so unwrap items for the callers.
+    return resp.json()["items"]
 
 
 def checkout_full(client, store_id, product_id, customer_id) -> dict:

@@ -82,7 +82,16 @@ def create_refund(
                 product.name if product else "?", available, qty
             )
 
-        line_total = sale_item.unit_price_applied * qty
+        # Refund the NET amount the customer actually paid for these units,
+        # not the gross list price. A line discount (discount_amount) is spread
+        # across the line's units via the stored net line_total; refunding
+        # unit_price_applied would hand back more cash than was paid (and could
+        # wrongly trip the paid_amount cap on a legitimate full return).
+        # A whole-line return (qty == original quantity) refunds exactly
+        # line_total; partial returns are prorated to the cent.
+        orig_qty = sale_item.quantity or qty
+        net_unit_price = (sale_item.line_total / orig_qty).quantize(Decimal("0.01"))
+        line_total = (sale_item.line_total * qty / orig_qty).quantize(Decimal("0.01"))
         refund_total += line_total
 
         refund_items.append(
@@ -91,7 +100,7 @@ def create_refund(
                 sale_item_id=si_id,
                 quantity=qty,
                 unit_count=sale_item.unit_count,
-                unit_price_refunded=sale_item.unit_price_applied,
+                unit_price_refunded=net_unit_price,
                 line_total=line_total,
             )
         )

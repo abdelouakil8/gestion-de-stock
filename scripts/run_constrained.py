@@ -1,10 +1,10 @@
 import sys
-import subprocess
+
 import win32api
-import win32job
-import pywintypes
-import win32process
 import win32event
+import win32job
+import win32process
+
 
 def main():
     if len(sys.argv) < 2:

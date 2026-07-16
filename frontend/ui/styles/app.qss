@@ -292,10 +292,7 @@ QRadioButton::indicator:checked {
 }
 QRadioButton::indicator:checked:hover { background: $primary_hover; border-color: $primary_hover; }
 QRadioButton::indicator:disabled { background: $surface_sunken; border-color: $border_light; }
-/* Keyboard focus must be VISIBLE on toggles too (WCAG 2.4.7). */
-QCheckBox:focus::indicator, QRadioButton:focus::indicator {
-    border: 2px solid $focus_ring;
-}
+/* Focus border on checkbox/radio indicator removed intentionally. */
 
 /* ================================ Buttons =============================== */
 

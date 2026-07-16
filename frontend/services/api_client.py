@@ -244,6 +244,7 @@ class ApiClient:
         if active_only:
             params["active_only"] = True
         return self._request("GET", "/products", params=params)
+
     def get_product_by_barcode(self, store_id: str, barcode: str) -> dict:
         return self._request(
             "GET", f"/products/by-barcode/{barcode}", params={"store_id": store_id}
@@ -275,19 +276,26 @@ class ApiClient:
     def upload_product_image(
         self, product_id: str, data: bytes, content_type: str, filename: str
     ) -> dict:
-        return self._request(
+        result = self._request(
             "POST",
             f"/products/{product_id}/image",
             owner=True,
             files={"file": (filename, data, content_type)},
         )
+        # The product's image_path changed server-side; drop the stale list
+        # cache so the inventory list reflects the new image immediately.
+        self.cache.invalidate("products:")
+        return result
 
     def get_product_image(self, product_id: str) -> bytes:
         """Raw image bytes; raises ApiError(not_found) when there is none."""
         return self._request("GET", f"/products/{product_id}/image")
 
     def delete_product_image(self, product_id: str) -> None:
-        return self._request("DELETE", f"/products/{product_id}/image", owner=True)
+        result = self._request("DELETE", f"/products/{product_id}/image", owner=True)
+        # image_path is now null server-side; invalidate the list cache too.
+        self.cache.invalidate("products:")
+        return result
 
     def get_product_movements(
         self,

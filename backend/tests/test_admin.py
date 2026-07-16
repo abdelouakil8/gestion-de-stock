@@ -88,6 +88,60 @@ def seed_everything(client) -> dict:
     return store
 
 
+@pytest.fixture()
+def fk_client(monkeypatch, tmp_path):
+    """Like ``client`` but with ``PRAGMA foreign_keys=ON`` — matching the
+    production engine (see app/db/session.py). Without this, SQLite silently
+    ignores foreign keys and the reset's delete order is never validated, which
+    is exactly how the incomplete wipe list shipped a reset that crashes on a
+    real install with a FOREIGN KEY constraint error."""
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @sa.event.listens_for(engine, "connect")
+    def _enable_fk(dbapi_conn, _record):
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.close()
+
+    Base.metadata.create_all(engine)
+    session = Session(engine)
+    monkeypatch.setattr(settings, "pin_hash", hash_pin(PIN))
+    monkeypatch.setattr(settings, "media_dir", tmp_path / "media")
+    app.dependency_overrides[deps.get_db] = lambda: session
+    with TestClient(app, raise_server_exceptions=False) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+    session.close()
+    engine.dispose()
+
+
+def test_factory_reset_wipes_all_tables_with_foreign_keys_enforced(fk_client, tmp_path):
+    """Regression: the wipe must delete EVERY table in FK-safe order.
+
+    A sale writes a stock_movement (and sale_items) that reference products;
+    with foreign keys enforced (as in production) the reset fails unless those
+    child tables are wiped before products. This guards against the wipe list
+    rotting again as new tables are added.
+    """
+    seed_everything(fk_client)
+    result = fk_client.post("/api/v1/admin/factory-reset", headers=PIN_HEADER)
+    assert result.status_code == 200, result.text
+    deleted = result.json()["deleted"]
+    # The tables that were previously missing from the wipe order must now be
+    # both present and cleared.
+    assert deleted["stock_movements"] >= 1
+    assert deleted["stores"] == 1 and deleted["products"] == 1
+
+    assert fk_client.get("/api/v1/stores").json() == []
+    # And a fresh store can be created afterwards (no orphaned rows blocking).
+    again = fk_client.post("/api/v1/stores", json={"name": "Après reset"})
+    assert again.status_code == 201, again.text
+
+
 def test_factory_reset_requires_pin(client):
     seed_everything(client)
     refused = client.post("/api/v1/admin/factory-reset")
@@ -114,7 +168,10 @@ def test_factory_reset_wipes_data_and_media(client, tmp_path):
     assert deleted["store_settings"] == 1
 
     assert client.get("/api/v1/stores").json() == []
-    assert client.get("/api/v1/products", params={"store_id": store["id"]}).json() == []
+    assert (
+        client.get("/api/v1/products", params={"store_id": store["id"]}).json()["items"]
+        == []
+    )
     assert not any((tmp_path / "media").rglob("*")), "media must be wiped"
 
 

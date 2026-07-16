@@ -8,10 +8,10 @@ from app.core.exceptions import NotFoundError
 from app.models.stock_movement import MovementType
 from app.schemas.product import (
     ProductCreate,
+    ProductPage,
     ProductRead,
     ProductReadWithCost,
     ProductUpdate,
-    ProductPage,
 )
 from app.schemas.stock_movement import (
     GlobalMovementPage,

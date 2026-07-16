@@ -87,7 +87,7 @@ def test_adjust_stock_sets_absolute_quantity_and_writes_movement(client):
 
     # Stock really changed.
     listed = client.get("/api/v1/products", params={"store_id": store_id}).json()
-    assert listed[0]["stock_quantity"] == 42
+    assert listed["items"][0]["stock_quantity"] == 42
 
     # An adjustment movement was recorded with the reason + note.
     page = client.get(

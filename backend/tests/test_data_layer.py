@@ -91,13 +91,15 @@ def test_product_crud_and_soft_delete(db):
     assert fetched.category_id == category.id
     assert fetched.low_stock_threshold == 5  # default
     assert fetched.image_path is None
-    assert len(products.list_products(db, store.id)) == 1
+    listed_items, listed_total = products.list_products(db, store.id)
+    assert len(listed_items) == 1 and listed_total == 1
 
     products.soft_delete_product(db, product.id)
     assert product.deleted_at is not None
     assert db.scalar(select(func.count()).select_from(Product)) == 1
     assert products.get_product(db, product.id) is None
-    assert products.list_products(db, store.id) == []
+    empty_items, empty_total = products.list_products(db, store.id)
+    assert empty_items == [] and empty_total == 0
 
 
 def test_product_money_is_exact_decimal(db):

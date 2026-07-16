@@ -138,9 +138,10 @@ def test_full_happy_path_checkout_and_stats(client):
 
     # Cashier list never exposes cost_price but does expose the sale prices.
     listed = client.get("/api/v1/products", params={"store_id": store_id}).json()
-    assert len(listed) == 1 and "cost_price" not in listed[0]
-    assert listed[0]["price_detail"] == "40.00"
-    assert listed[0]["price_super_gros"] == "30.00"
+    items = listed["items"]
+    assert listed["total"] == 1 and len(items) == 1 and "cost_price" not in items[0]
+    assert items[0]["price_detail"] == "40.00"
+    assert items[0]["price_super_gros"] == "30.00"
 
     # Barcode lookup (scanner path)
     scanned = client.get(

@@ -70,6 +70,37 @@ def sell(db, store, product, quantity, price, created_at):
     return sale
 
 
+def test_stock_turnover_no_decimal_float_typeerror(db):
+    """Regression: stock_turnover multiplied a Decimal COGS by a float
+    annualisation factor (365/days), raising TypeError and 500-ing
+    /statistics/stock-turnover for any category with inventory value."""
+    from app.services import velocity
+
+    store = stores.create_store(db, StoreCreate(name="Rotation"))
+    cat = categories.create_category(
+        db, CategoryCreate(store_id=store.id, name="Boissons")
+    )
+    prod = products.create_product(
+        db,
+        ProductCreate(
+            store_id=store.id,
+            category_id=cat.id,
+            name="Eau",
+            cost_price=Decimal("25.00"),
+            price_detail=Decimal("40.00"),
+            price_gros=Decimal("38.00"),
+            price_super_gros=Decimal("30.00"),
+            stock_quantity=100,  # inventory value 100*25 = 2500 (inv_val truthy)
+        ),
+    )
+    sell(db, store, prod, 10, "40.00", JAN_15)  # COGS = 10 * 25 = 250
+
+    result = velocity.stock_turnover(db, store.id, *JAN_RANGE)
+    assert isinstance(result.overall_turnover, float)
+    row = next(c for c in result.categories if c.category_id == cat.id)
+    assert isinstance(row.turnover, float) and row.turnover > 0
+
+
 def test_summary_revenue_profit_and_range_filtering(db):
     store = stores.create_store(db, StoreCreate(name="Boutique Stats"))
     water = make_product(db, store, "Eau", "25.00", "30.00")

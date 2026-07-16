@@ -12,25 +12,27 @@ Generates:
 - 50 Purchases (Purchase Orders)
 - 200 Sales
 """
-import sys
 import random
+import sys
 from decimal import Decimal
 from pathlib import Path
-from loguru import logger
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
+from sqlalchemy import inspect, select
+
 from app.db.session import SessionLocal, engine
 from app.models import Store
-from sqlalchemy import select, inspect
-
 from app.schemas.category import CategoryCreate
 from app.schemas.customer import CustomerCreate
 from app.schemas.product import ProductCreate
-from app.schemas.supplier import SupplierCreate, PurchaseOrderCreate, PurchaseOrderItemCreate
 from app.schemas.sale import CartItem, CheckoutRequest, PaymentInfo
 from app.schemas.store import StoreCreate
-
+from app.schemas.supplier import (
+    PurchaseOrderCreate,
+    PurchaseOrderItemCreate,
+    SupplierCreate,
+)
 from app.services import (
     categories,
     customers,
@@ -38,7 +40,7 @@ from app.services import (
     purchasing,
     sales,
     stores,
-    suppliers
+    suppliers,
 )
 
 STORE_NAME = "Boutique Stress Audit"
@@ -180,7 +182,7 @@ def main() -> int:
             
             try:
                 sales.finalize_sale(db, req)
-            except Exception as e:
+            except Exception:
                 db.rollback()
                 pass
 

@@ -104,36 +104,45 @@ def ok(label: str) -> None:
 
 
 def install_error_capture() -> None:
-    """Headless runs can't click QMessageBox away — record instead of show.
+    """Headless runs can't click a QMessageBox away — record instead of show.
 
-    Every screen/dialog module imports show_error by name, so the
-    replacement is applied per consuming module."""
-    import ui.screens.alerts
-    import ui.screens.checkout
-    import ui.screens.customers
-    import ui.screens.inventory
-    import ui.screens.settings_screen
-    import ui.screens.statistics
-    import ui.widgets.customer_dialogs
-    import ui.widgets.modal
-    import ui.widgets.payment_dialogs
+    ``show_error`` (a blocking ``QMessageBox.critical``) is imported *by name*
+    into 20+ modules, so patching only the source module leaves every
+    ``from ui.widgets.modal import show_error`` binding pointing at the real
+    modal — which deadlocks an offscreen run (e.g. the factory-reset dialog in
+    ``settings_screen._dialogs``). Import the packages the drive touches so
+    their submodules exist, then rebind ``show_error`` in EVERY already-loaded
+    ``ui`` module. This is complete and cannot silently miss a new consumer."""
+    import importlib
+    import sys
+
+    # Force-import the packages (and their submodules) the drive exercises so
+    # their ``show_error`` bindings are present in sys.modules before we sweep.
+    for name in (
+        "ui.widgets.modal",
+        "ui.widgets.payment_dialogs",
+        "ui.widgets.customer_dialogs",
+        "ui.screens.checkout._screen",
+        "ui.screens.inventory._form",
+        "ui.screens.inventory._list",
+        "ui.screens.customers",
+        "ui.screens.statistics._screen",
+        "ui.screens.alerts",
+        "ui.screens.ventes",
+        "ui.screens.settings_screen._dialogs",
+        "ui.screens.settings_screen._screen",
+    ):
+        importlib.import_module(name)
 
     def fake_show_error(_parent, message: str, _title: str = "") -> None:
         ERRORS_SHOWN.append(message)
         print(f"    (dialogue d'erreur capturé : {message})")
 
-    for module in (
-        ui.widgets.modal,
-        ui.widgets.payment_dialogs,
-        ui.widgets.customer_dialogs,
-        ui.screens.checkout,
-        ui.screens.inventory,
-        ui.screens.customers,
-        ui.screens.statistics,
-        ui.screens.alerts,
-        ui.screens.settings_screen,
-    ):
-        module.show_error = fake_show_error
+    for name, module in list(sys.modules.items()):
+        if module is None or not (name == "ui" or name.startswith("ui.")):
+            continue
+        if hasattr(module, "show_error"):
+            module.show_error = fake_show_error
 
 
 def main() -> int:
@@ -252,6 +261,7 @@ def main() -> int:
         "mode": "partial",
         "amount_paid": "100.00",
         "customer_id": customer["id"],
+        "payment_method": "cash",
     }
     ok("Paiement partiel avec client → payload {mode, amount_paid, customer_id}")
 
@@ -263,7 +273,7 @@ def main() -> int:
     assert sale["paid_amount"] == "100.00" and sale["balance"] == "125.00"
     ok("Vente à crédit enregistrée : payé 100.00, reste 125.00")
 
-    after = api.list_products(store_id)
+    after = api.list_products(store_id)["items"]
     stock_now = next(p for p in after if p["id"] == water["id"])["stock_quantity"]
     assert stock_now == 44
     ok("Stock décrémenté côté serveur (50 → 44)")
@@ -309,7 +319,7 @@ def main() -> int:
         app,
         lambda: any(
             p["id"] == water["id"] and p.get("image_path")
-            for p in api.list_products(store_id)
+            for p in api.list_products(store_id)["items"]
         ),
         what="image_path set",
     )
@@ -340,7 +350,7 @@ def main() -> int:
         lambda: customers_screen.card_balance._value.text() not in ("—", "…"),
         what="customer stats",
     )
-    assert customers_screen.card_balance._value.text() == "125,00"
+    assert customers_screen.card_balance._value.text() == "125,00 DA"
     ok("Panneau client : solde crédit exact (125,00), CA/bénéfice/ventes chargés")
 
     wait_until(
@@ -352,7 +362,7 @@ def main() -> int:
     print("[Alertes]")
     from ui.screens.alerts import AlertsScreen
 
-    alerts_screen = AlertsScreen(api, store_id, lambda pid: None)
+    alerts_screen = AlertsScreen(api, store_id, lambda pid: None, lambda po: None)
     alerts_screen.refresh()
     wait_until(
         app,
@@ -386,14 +396,16 @@ def main() -> int:
 
     stats_screen = StatisticsScreen(api, store_id)
     stats_screen.refresh()
-    today_card = stats_screen.overview_cards["today"]
+    # Rebuilt dashboard (Phase 12): KPI cards replace the old per-period cards.
+    # The default 30-day preset covers today's sale, so revenue is populated
+    # with a DA-suffixed amount once the summary lands.
     wait_until(
         app,
-        lambda: today_card.revenue_value.text() not in ("—",),
-        what="overview cards",
+        lambda: stats_screen.kpi_revenue.value.text() not in ("—", ""),
+        what="overview KPI cards",
     )
-    assert today_card.revenue_value.text() == "225,00"
-    ok("Vue d'ensemble : CA du jour 225,00 avec comparaison période précédente")
+    assert "DA" in stats_screen.kpi_revenue.value.text()
+    ok("Vue d'ensemble : cartes KPI (CA/bénéfice/ventes) chargées avec devise")
 
     wait_until(app, lambda: stats_screen.top_table.rowCount() >= 1, what="top products")
     ok("Meilleures ventes avec vignettes")
@@ -427,14 +439,14 @@ def main() -> int:
     # ------------------------------------------------------ Smart search
     print("[Recherche intelligente]")
     # Accent-insensitive: "cafe" (no accent) must find "Café Torréfié عربي".
-    hits = api.search_products(store_id, query="cafe", active_only=True)
+    hits = api.search_products(store_id, query="cafe", active_only=True)["items"]
     assert any(
         p["id"] == coffee["id"] for p in hits
     ), f"accent-insensitive search failed: {[p['name'] for p in hits]}"
     ok("Recherche produit tolérante aux accents (« cafe » → « Café Torréfié »)")
 
     # Fuzzy / typo-tolerant: a small typo must still surface the product.
-    typo_hits = api.search_products(store_id, query="caef", limit=5)
+    typo_hits = api.search_products(store_id, query="caef", limit=5)["items"]
     assert any(
         p["id"] == coffee["id"] for p in typo_hits
     ), f"fuzzy search failed: {[p['name'] for p in typo_hits]}"

@@ -94,7 +94,10 @@ def stock_turnover(
     date_to: datetime,
 ) -> StockTurnover:
     days = max(1, (date_to - date_from).days)
-    annualize = 365 / days
+    # Keep the annualisation factor Decimal: `cogs` below is Decimal, and
+    # Decimal * float raises TypeError. Money math stays Decimal; the single
+    # float() conversion happens at the API boundary (see `turnover` below).
+    annualize = Decimal(365) / Decimal(days)
 
     cost_expr = type_coerce(
         SaleItem.quantity * SaleItem.unit_count * Product.cost_price, Money()
@@ -108,6 +111,10 @@ def stock_turnover(
                 "units_sold"
             ),
         )
+        # Root the FROM at sales; otherwise selecting Category.id first makes
+        # `categories` the implicit root and the outerjoin re-adds it, yielding
+        # an "ambiguous column name: categories.id" error at execution.
+        .select_from(Sale)
         .join(SaleItem, SaleItem.sale_id == Sale.id)
         .join(Product, Product.id == SaleItem.product_id)
         .outerjoin(Category, Category.id == Product.category_id)
@@ -124,6 +131,8 @@ def stock_turnover(
                 Money(),
             ).label("stock_value"),
         )
+        # Root the FROM at products for the same reason as the COGS query above.
+        .select_from(Product)
         .outerjoin(Category, Category.id == Product.category_id)
         .where(
             (Product.store_id == store_id)

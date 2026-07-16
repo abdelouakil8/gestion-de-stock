@@ -118,7 +118,7 @@ def test_upload_serve_replace_and_delete(client, tmp_path):
     listed = client.get(
         "/api/v1/products", params={"store_id": product["store_id"]}
     ).json()
-    assert listed[0]["image_path"] is None
+    assert listed["items"][0]["image_path"] is None
 
 
 def test_bad_content_type_rejected(client, tmp_path):

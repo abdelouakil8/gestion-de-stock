@@ -559,7 +559,9 @@ class StatisticsScreen(QWidget):
             with open(path, "wb") as f:
                 f.write(data)
         except OSError as e:
-            show_error(self, strings.ERROR_TITLE, f"Erreur d'écriture : {e}")
+            show_error(
+                self, strings.ERROR_TITLE, strings.EXPORT_WRITE_ERROR.format(error=e)
+            )
 
     def _daily_report(self) -> None:
         """Pick a past date, then generate + open the end-of-day PDF."""
@@ -668,7 +670,9 @@ class StatisticsScreen(QWidget):
     # ------------------------------------------------------------ handlers
 
     def _on_products(self, products_page: dict) -> None:
-        items = products_page.get("items", []) if isinstance(products_page, dict) else []
+        items = (
+            products_page.get("items", []) if isinstance(products_page, dict) else []
+        )
         self.products_by_id = {p["id"]: p for p in items}
         if self._top_data:
             self._render_top_thumbs(self._top_data)

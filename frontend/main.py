@@ -227,8 +227,8 @@ def main() -> int:
     _install_qt_exception_guard()
     qt_app.setApplicationName(strings.APP_TITLE)
     
+    from PySide6.QtGui import QColor, QPixmap
     from PySide6.QtWidgets import QSplashScreen
-    from PySide6.QtGui import QPixmap, QColor
     pixmap = QPixmap(500, 350)
     pixmap.fill(QColor("#2563EB"))  # Primary accent color
     splash = QSplashScreen(pixmap)

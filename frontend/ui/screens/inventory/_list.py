@@ -28,11 +28,11 @@ from ui.styles.tokens import NEUTRAL, SPACING, THUMB_SIZES
 from ui.widgets.badge import Badge
 from ui.widgets.data_table import DataTable
 from ui.widgets.modal import ModalDialog, ask_confirm, show_error
+from ui.widgets.pagination import PaginationBar
 from ui.widgets.states import EmptyState
 from ui.widgets.stock_adjust_dialog import StockAdjustDialog
 from ui.widgets.stock_movements_view import StockMovementsView
 from ui.widgets.thumb import Thumb
-from ui.widgets.pagination import PaginationBar
 from ui.widgets.toast import show_toast
 
 from ._detail import ProductDetailDialog
@@ -90,7 +90,8 @@ class InventoryScreen(QWidget):
         import_button.setObjectName("Ghost")
         import_button.clicked.connect(self._import_csv)
         self.receive_button = QPushButton(
-            qta.icon("fa5s.arrow-down", color=NEUTRAL["600"]), "Réceptionner"
+            qta.icon("fa5s.arrow-down", color=NEUTRAL["600"]),
+            strings.STOCK_RECEIVE_BUTTON,
         )
         self.receive_button.setObjectName("Ghost")
         self.receive_button.clicked.connect(self._receive_stock)
@@ -174,7 +175,7 @@ class InventoryScreen(QWidget):
         products_layout.setSpacing(SPACING["md"])
         products_layout.addLayout(toolbar)
         products_layout.addLayout(body, stretch=1)
-        
+
         self.pagination = PaginationBar()
         self.pagination.page_changed.connect(self._load_page)
         products_layout.addWidget(self.pagination)
@@ -200,12 +201,10 @@ class InventoryScreen(QWidget):
         offset = page * self._page_size
         cat = self._selected_category()
         cat_id = cat if cat != "__uncategorized__" else None
-        
-        # Uncategorized isn't directly supported by backend category_id filter if it's null, 
-        # but we can filter it client-side if we have to, or just load.
-        # Actually, if cat == "__uncategorized__", we'll just handle it by fetching all and filtering, or we need a special backend flag. 
-        # For now, let's just pass cat_id to list_products.
-        
+
+        # Uncategorised isn't a backend category_id filter yet; for now we
+        # just pass cat_id through to list_products.
+
         query = self.search.text().strip()
         if query:
             run_api(
@@ -218,7 +217,10 @@ class InventoryScreen(QWidget):
         else:
             run_api(
                 lambda: self.api.list_products(
-                    self.store_id, limit=self._page_size, offset=offset, category_id=cat_id
+                    self.store_id,
+                    limit=self._page_size,
+                    offset=offset,
+                    category_id=cat_id,
                 ),
                 self._on_products,
                 lambda err: show_error(self, err.message),
@@ -271,16 +273,17 @@ class InventoryScreen(QWidget):
     def _on_products(self, products_page: dict) -> None:
         self.products = products_page.get("items", [])
         total = products_page.get("total", 0)
-        
-        # If uncategorized, filter client side since backend doesn't support IS NULL filter yet natively.
+
+        # Uncategorised needs client-side filtering (no backend IS NULL filter yet).
         cat = self._selected_category()
         if cat == "__uncategorized__":
             self.products = [p for p in self.products if p.get("category_id") is None]
 
         import math
+
         total_pages = max(1, math.ceil(total / self._page_size))
         self.pagination.set_state(self._page, total_pages)
-        
+
         self.search_results = None
         self._render()
         if self._pending_focus:
@@ -461,8 +464,8 @@ class InventoryScreen(QWidget):
             return
         qty, ok = QInputDialog.getInt(
             self,
-            "Réceptionner",
-            f"Quantité à ajouter pour {product['name']} :",
+            strings.STOCK_RECEIVE_BUTTON,
+            strings.STOCK_RECEIVE_PROMPT.format(name=product["name"]),
             1,
             1,
             1000000,
@@ -484,7 +487,7 @@ class InventoryScreen(QWidget):
 
     def _on_receive_done(self, qty: int, name: str) -> None:
         self.refresh()
-        show_toast(self, f"{qty} unités ajoutées à {name}.")
+        show_toast(self, strings.STOCK_RECEIVE_TOAST.format(qty=qty, name=name))
 
     def _import_csv(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
