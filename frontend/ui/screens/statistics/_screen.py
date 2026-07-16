@@ -204,7 +204,16 @@ class StatisticsScreen(QWidget):
         self.date_from.setDisplayFormat("dd/MM/yyyy")
         layout.addWidget(self.date_from)
 
-        arrow = QLabel("→")
+        from PySide6.QtWidgets import QApplication
+
+        _app_dir = QApplication.instance()
+        _rtl = (
+            _app_dir.layoutDirection() == Qt.LayoutDirection.RightToLeft
+            if _app_dir
+            else False
+        )
+        arrow_text = "←" if _rtl else "→"
+        arrow = QLabel(arrow_text)
         arrow.setObjectName("Muted")
         layout.addWidget(arrow)
 
@@ -658,8 +667,9 @@ class StatisticsScreen(QWidget):
 
     # ------------------------------------------------------------ handlers
 
-    def _on_products(self, products: object) -> None:
-        self.products_by_id = {p["id"]: p for p in products}
+    def _on_products(self, products_page: dict) -> None:
+        items = products_page.get("items", []) if isinstance(products_page, dict) else []
+        self.products_by_id = {p["id"]: p for p in items}
         if self._top_data:
             self._render_top_thumbs(self._top_data)
 

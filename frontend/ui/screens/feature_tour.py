@@ -96,6 +96,7 @@ class FeatureTour(QWidget):
         buttons.addWidget(self._skip_btn)
         buttons.addStretch(1)
         self._prev_btn = QPushButton(strings.FEATURE_TOUR_PREV)
+        self._prev_btn.setObjectName("Ghost")
         self._prev_btn.clicked.connect(self._prev)
         buttons.addWidget(self._prev_btn)
         self._next_btn = QPushButton(strings.FEATURE_TOUR_NEXT)

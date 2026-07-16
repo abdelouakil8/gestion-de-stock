@@ -146,7 +146,8 @@ class ProductSearchBox(QWidget):
         if query != self._query:  # superseded by a newer keystroke
             return
         self.results.clear()
-        for product in products or []:
+        items = products.get("items", []) if products else []
+        for product in items:
             barcode = product.get("barcode")
             label = f"{product['name']}   ·   {barcode}" if barcode else product["name"]
             item = QListWidgetItem(label)

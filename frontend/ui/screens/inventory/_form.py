@@ -190,6 +190,7 @@ class ProductDialog(ModalDialog):
         self.btn_print_label = QPushButton(
             qta.icon("fa5s.barcode", color=NEUTRAL["600"]), strings.PRODUCT_PRINT_LABEL
         )
+        self.btn_print_label.setObjectName("Ghost")
         self.btn_print_label.clicked.connect(self._print_label)
         self.btn_print_label.setEnabled(bool(details))
         barcode_row.addWidget(self.btn_print_label)
@@ -216,6 +217,7 @@ class ProductDialog(ModalDialog):
         choose_button = QPushButton(
             qta.icon("fa5s.image", color=NEUTRAL["600"]), strings.PRODUCT_IMAGE_CHOOSE
         )
+        choose_button.setObjectName("Ghost")
         choose_button.clicked.connect(self._choose_image)
         self.remove_image_button = QPushButton(strings.PRODUCT_IMAGE_REMOVE)
         self.remove_image_button.setObjectName("Ghost")

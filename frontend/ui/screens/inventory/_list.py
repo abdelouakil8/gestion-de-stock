@@ -32,6 +32,7 @@ from ui.widgets.states import EmptyState
 from ui.widgets.stock_adjust_dialog import StockAdjustDialog
 from ui.widgets.stock_movements_view import StockMovementsView
 from ui.widgets.thumb import Thumb
+from ui.widgets.pagination import PaginationBar
 from ui.widgets.toast import show_toast
 
 from ._detail import ProductDetailDialog
@@ -77,6 +78,7 @@ class InventoryScreen(QWidget):
         self.edit_button = QPushButton(
             qta.icon("fa5s.pen", color=NEUTRAL["600"]), strings.INVENTORY_EDIT_PRODUCT
         )
+        self.edit_button.setObjectName("Ghost")
         self.edit_button.clicked.connect(self._edit_product)
         self.archive_button = QPushButton(strings.INVENTORY_ARCHIVE_PRODUCT)
         self.archive_button.setObjectName("Danger")
@@ -85,20 +87,24 @@ class InventoryScreen(QWidget):
             qta.icon("fa5s.file-upload", color=NEUTRAL["600"]),
             strings.IMPORT_BUTTON,
         )
+        import_button.setObjectName("Ghost")
         import_button.clicked.connect(self._import_csv)
         self.receive_button = QPushButton(
             qta.icon("fa5s.arrow-down", color=NEUTRAL["600"]), "Réceptionner"
         )
+        self.receive_button.setObjectName("Ghost")
         self.receive_button.clicked.connect(self._receive_stock)
         self.adjust_button = QPushButton(
             qta.icon("fa5s.clipboard-check", color=NEUTRAL["600"]),
             strings.INVENTORY_ADJUST_BUTTON,
         )
+        self.adjust_button.setObjectName("Ghost")
         self.adjust_button.clicked.connect(self._adjust_stock)
         self.labels_button = QPushButton(
             qta.icon("fa5s.tag", color=NEUTRAL["600"]),
             strings.INVENTORY_LABELS_BUTTON,
         )
+        self.labels_button.setObjectName("Ghost")
         self.labels_button.clicked.connect(self._open_label_printing)
 
         self.edit_button.setEnabled(False)
@@ -168,6 +174,13 @@ class InventoryScreen(QWidget):
         products_layout.setSpacing(SPACING["md"])
         products_layout.addLayout(toolbar)
         products_layout.addLayout(body, stretch=1)
+        
+        self.pagination = PaginationBar()
+        self.pagination.page_changed.connect(self._load_page)
+        products_layout.addWidget(self.pagination)
+
+        self._page = 0
+        self._page_size = 50
 
         self.movements_view = StockMovementsView(self.api, self.store_id)
         self.tabs = QTabWidget()
@@ -182,17 +195,42 @@ class InventoryScreen(QWidget):
         if index == 1 and not self.movements_view._loaded_once:  # noqa: SLF001
             self.movements_view.refresh()
 
+    def _load_page(self, page: int) -> None:
+        self._page = page
+        offset = page * self._page_size
+        cat = self._selected_category()
+        cat_id = cat if cat != "__uncategorized__" else None
+        
+        # Uncategorized isn't directly supported by backend category_id filter if it's null, 
+        # but we can filter it client-side if we have to, or just load.
+        # Actually, if cat == "__uncategorized__", we'll just handle it by fetching all and filtering, or we need a special backend flag. 
+        # For now, let's just pass cat_id to list_products.
+        
+        query = self.search.text().strip()
+        if query:
+            run_api(
+                lambda: self.api.search_products(
+                    self.store_id, query=query, limit=self._page_size, offset=offset
+                ),
+                self._on_products,
+                lambda err: show_error(self, err.message),
+            )
+        else:
+            run_api(
+                lambda: self.api.list_products(
+                    self.store_id, limit=self._page_size, offset=offset, category_id=cat_id
+                ),
+                self._on_products,
+                lambda err: show_error(self, err.message),
+            )
+
     def refresh(self) -> None:
         run_api(
             lambda: self.api.list_categories(self.store_id),
             self._on_categories,
             lambda err: show_error(self, err.message),
         )
-        run_api(
-            lambda: self.api.list_products(self.store_id),
-            self._on_products,
-            lambda err: show_error(self, err.message),
-        )
+        self._load_page(0)
 
     def focus_product(self, product_id: str) -> None:
         self._pending_focus = product_id
@@ -200,7 +238,7 @@ class InventoryScreen(QWidget):
         self.search_results = None
         if self.category_rail.count():
             self.category_rail.setCurrentRow(0)
-        self.refresh()
+        self._load_page(0)
 
     def _selected_category(self):
         item = self.category_rail.currentItem()
@@ -228,10 +266,22 @@ class InventoryScreen(QWidget):
                 break
         self.category_rail.setCurrentRow(target)
         self.category_rail.blockSignals(False)
-        self._render()
+        self._load_page(0)
 
-    def _on_products(self, products: object) -> None:
-        self.products = list(products)
+    def _on_products(self, products_page: dict) -> None:
+        self.products = products_page.get("items", [])
+        total = products_page.get("total", 0)
+        
+        # If uncategorized, filter client side since backend doesn't support IS NULL filter yet natively.
+        cat = self._selected_category()
+        if cat == "__uncategorized__":
+            self.products = [p for p in self.products if p.get("category_id") is None]
+
+        import math
+        total_pages = max(1, math.ceil(total / self._page_size))
+        self.pagination.set_state(self._page, total_pages)
+        
+        self.search_results = None
         self._render()
         if self._pending_focus:
             for row, product in enumerate(self.visible_products):
@@ -244,22 +294,12 @@ class InventoryScreen(QWidget):
     def _on_search_changed(self, text: str) -> None:
         if not text.strip():
             self._search_debounce.stop()
-            self.search_results = None
-            self._render()
+            self._load_page(0)
             return
         self._search_debounce.start()
 
     def _run_search(self) -> None:
-        query = self.search.text().strip()
-        if not query:
-            self.search_results = None
-            self._render()
-            return
-        run_api(
-            lambda: self.api.search_products(self.store_id, query=query, limit=100),
-            lambda results, q=query: self._on_search_results(q, results),
-            lambda err: show_error(self, err.message),
-        )
+        self._load_page(0)
 
     def _on_search_results(self, query: str, results: object) -> None:
         if not shiboken6.isValid(self):

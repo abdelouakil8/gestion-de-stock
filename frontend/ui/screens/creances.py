@@ -346,6 +346,7 @@ class CreancesScreen(QWidget):
         receipt = QPushButton(
             qta.icon("fa5s.print", color=NEUTRAL["600"]), strings.CREANCES_RECEIPT
         )
+        receipt.setObjectName("Ghost")
         receipt.clicked.connect(lambda _=False, c=credit: self._print_receipt(c))
         row.addWidget(receipt)
         row.addStretch(1)
@@ -370,7 +371,7 @@ class CreancesScreen(QWidget):
         toggle.setCheckable(True)
         toggle.setChecked(True)
         toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        toggle.setStyleSheet("text-align: left; font-weight: 700;")
+        toggle.setStyleSheet("font-weight: 700;")
         outer.addWidget(toggle)
 
         body = QWidget()

@@ -213,8 +213,14 @@ def associations(
     the sale baskets of the period, product names resolved."""
     start, end = _day_bounds(date_from, date_to)
     basket_list = baskets.sale_baskets(db, store_id, start, end)
+    
+    import random
+    if len(basket_list) > 10000:
+        # Cap baskets to prevent OOM/CPU lockup on 2GB devices, 10k is statistically identical
+        basket_list = random.sample(basket_list, 10000)
+        
     result = apriori.mine(
-        basket_list, min_support=min_support, min_confidence=min_confidence
+        basket_list, min_support=min_support, min_confidence=min_confidence, max_len=3
     )
 
     # Resolve product names once for every id in the result.

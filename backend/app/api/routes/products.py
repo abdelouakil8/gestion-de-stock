@@ -11,6 +11,7 @@ from app.schemas.product import (
     ProductRead,
     ProductReadWithCost,
     ProductUpdate,
+    ProductPage,
 )
 from app.schemas.stock_movement import (
     GlobalMovementPage,
@@ -31,20 +32,21 @@ router = APIRouter()
 # Owner endpoints (PIN-gated) return ProductReadWithCost.
 
 
-@router.get("", response_model=list[ProductRead])
+@router.get("", response_model=ProductPage)
 def list_products(
     store_id: UUID,
     db: DbDep,
     q: str | None = Query(default=None, max_length=200),
     limit: int | None = Query(default=None, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     active_only: bool = Query(default=False),
-) -> list:
-    """Store products; q runs the smart search, limit caps results.
-
-    With no filters the full store catalog is returned (frontend prefetch)."""
-    return products.list_products(
-        db, store_id, query=q, limit=limit, active_only=active_only
+    category_id: UUID | None = None,
+) -> dict:
+    """Store products; q runs the smart search, limit caps results."""
+    items, total = products.list_products(
+        db, store_id, query=q, limit=limit, offset=offset, active_only=active_only, category_id=category_id
     )
+    return {"items": items, "total": total}
 
 
 @router.get("/by-barcode/{barcode}", response_model=ProductRead)

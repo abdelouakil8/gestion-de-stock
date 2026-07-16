@@ -96,6 +96,7 @@ class VentesScreen(QWidget):
         refresh_button = QPushButton(
             qta.icon("fa5s.sync", color=NEUTRAL["600"]), strings.REFRESH
         )
+        refresh_button.setObjectName("Ghost")
         refresh_button.clicked.connect(self.refresh)
         header.addWidget(refresh_button)
         layout.addLayout(header)
@@ -358,12 +359,14 @@ class SaleDetailDialog(ModalDialog):
         reprint = QPushButton(
             qta.icon("fa5s.print", color=NEUTRAL["600"]), strings.SALE_REPRINT_RECEIPT
         )
+        reprint.setObjectName("Ghost")
         reprint.clicked.connect(self._reprint_receipt)
         self.buttons.addButton(reprint, self.buttons.ButtonRole.ActionRole)
 
         refund_btn = QPushButton(
             qta.icon("fa5s.undo", color=NEUTRAL["600"]), strings.REFUND_BUTTON
         )
+        refund_btn.setObjectName("Ghost")
         refund_btn.clicked.connect(self._open_refund)
         self.buttons.addButton(refund_btn, self.buttons.ButtonRole.ActionRole)
 
@@ -392,12 +395,14 @@ class SaleDetailDialog(ModalDialog):
             qta.icon("fa5s.user-slash", color=NEUTRAL["600"]),
             strings.SALE_LEAVE_ANONYMOUS,
         )
+        leave.setObjectName("Ghost")
         leave.clicked.connect(self._leave_anonymous)
         actions.addWidget(leave)
         create = QPushButton(
             qta.icon("fa5s.user-plus", color=NEUTRAL["600"]),
             strings.SALE_CREATE_CUSTOMER,
         )
+        create.setObjectName("Ghost")
         create.clicked.connect(self._create_customer)
         actions.addWidget(create)
         actions.addStretch(1)

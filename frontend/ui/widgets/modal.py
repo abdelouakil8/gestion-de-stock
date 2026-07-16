@@ -95,6 +95,11 @@ class ModalDialog(QDialog):
         )
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
+        
+        # Explicitly connect the buttons to bypass QDialogButtonBox routing quirks
+        # when extra buttons with different roles are added by subclasses.
+        self.ok_button.clicked.connect(self.accept)
+        self.cancel_button.clicked.connect(self.reject)
         body_layout.addWidget(self.buttons)
         outer.addWidget(body)
 

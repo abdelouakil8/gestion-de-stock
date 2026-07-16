@@ -85,31 +85,47 @@ def list_products(
     *,
     query: str | None = None,
     limit: int | None = None,
+    offset: int = 0,
     active_only: bool = False,
-) -> list[Product]:
+    category_id: UUID | None = None,
+) -> tuple[list[Product], int]:
     """List store products.
 
-    With no filters (query/limit/active_only all default) this returns EVERY
-    non-deleted product of the store, ordered by name — the frontend catalog
-    prefetch relies on the full, uncapped list. Any filter delegates to the
-    smart search engine (LIKE prefilter + fuzzy fallback).
+    Returns a tuple of (items, total_count) to support pagination.
     """
-    if query is None and limit is None and not active_only:
-        return list(
-            db.scalars(
-                select(Product)
-                .options(selectinload(Product.packagings))
-                .where(Product.store_id == store_id, Product.deleted_at.is_(None))
-                .order_by(Product.name)
-            )
-        )
-    return search.search_products(
-        db,
-        store_id=store_id,
-        query=query,
-        limit=(limit or 20),
-        active_only=active_only,
+    base_stmt = select(Product).where(
+        Product.store_id == store_id, Product.deleted_at.is_(None)
     )
+    if active_only:
+        base_stmt = base_stmt.where(Product.is_active.is_(True))
+    if category_id:
+        base_stmt = base_stmt.where(Product.category_id == category_id)
+
+    if query:
+        # Delegate to the smart search which does LIKE + fuzzy ranking.
+        # Request enough limit to cover the requested page (offset + limit),
+        # since fuzzy ranking is global and offset pagination must slice after ranking.
+        req_limit = offset + (limit or 50)
+        results = search.search_products(
+            db,
+            store_id=store_id,
+            query=query,
+            limit=req_limit,
+            active_only=active_only,
+            category_id=category_id,
+        )
+        total = len(results)
+        return results[offset:], total
+
+    from sqlalchemy import func
+    total = db.scalar(select(func.count()).select_from(base_stmt.subquery())) or 0
+    
+    stmt = base_stmt.order_by(Product.name).offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+        
+    items = list(db.scalars(stmt.options(selectinload(Product.packagings))))
+    return items, total
 
 
 def get_product_by_barcode(db: Session, store_id: UUID, barcode: str) -> Product | None:

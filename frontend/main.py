@@ -45,12 +45,9 @@ try:
     )
 
     from app.core.config import settings
-    from app.main import app as fastapi_app
     from services.api_client import ApiClient, ApiError
     from services.updater import CURRENT_VERSION
     from ui import strings
-    from ui.screens.login import LoginDialog
-    from ui.screens.main_window import MainWindow
     from ui.styles import tokens
     from ui.styles.tokens import render_qss
 except Exception:
@@ -59,13 +56,12 @@ except Exception:
 
 DEFAULT_STORE_NAME = "Ma Boutique"
 
-
 def _parse_semver(v: str) -> tuple[int, ...]:
     return tuple(int(p) for p in v.lstrip("v").split(".") if p.isdigit())
 
-
 def start_api_server() -> uvicorn.Server:
     """Run uvicorn on a daemon thread inside this same process."""
+    from app.main import app as fastapi_app
     config = uvicorn.Config(
         fastapi_app,
         host=settings.api_host,  # loopback only — enforced in Settings
@@ -227,11 +223,25 @@ def _apply_theme(qt_app: QApplication, accent=None, mode=None, overrides=None) -
 
 
 def main() -> int:
-    server = start_api_server()
-
     qt_app = QApplication(sys.argv)
     _install_qt_exception_guard()
     qt_app.setApplicationName(strings.APP_TITLE)
+    
+    from PySide6.QtWidgets import QSplashScreen
+    from PySide6.QtGui import QPixmap, QColor
+    pixmap = QPixmap(500, 350)
+    pixmap.fill(QColor("#2563EB"))  # Primary accent color
+    splash = QSplashScreen(pixmap)
+    splash.showMessage(
+        "Chargement de GestionStock...", 
+        Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, 
+        Qt.GlobalColor.white
+    )
+    splash.show()
+    qt_app.processEvents()
+
+    server = start_api_server()
+
     _apply_theme(qt_app)  # default theme until the store's settings load
     qt_app.aboutToQuit.connect(lambda: setattr(server, "should_exit", True))
 
@@ -307,6 +317,7 @@ def main() -> int:
         # Always show the login gate (multi-user): the operator picks their
         # name and PIN and receives a session token. On a just-configured
         # install the owner is materialized from the PIN and is pickable.
+        from ui.screens.login import LoginDialog
         login = LoginDialog(api)
         if not login.exec():
             return 0
@@ -321,10 +332,12 @@ def main() -> int:
     # instead of a dead gap between the PIN dialog and the window.
     qt_app.setOverrideCursor(Qt.CursorShape.WaitCursor)
     try:
+        from ui.screens.main_window import MainWindow
         window = MainWindow(api, store)
         window.show()
     finally:
         qt_app.restoreOverrideCursor()
+        splash.finish(window)
 
     if smoke_test:
         QTimer.singleShot(4000, qt_app.quit)

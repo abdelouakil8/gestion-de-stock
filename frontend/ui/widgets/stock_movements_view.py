@@ -132,6 +132,14 @@ class StockMovementsView(QWidget):
             EmptyState("fa5s.exchange-alt", strings.MOVEMENTS_EMPTY),
         )
         layout.addWidget(self.stack, stretch=1)
+        
+        from ui.widgets.pagination import PaginationBar
+        self.pagination = PaginationBar()
+        self.pagination.page_changed.connect(self._load_page)
+        layout.addWidget(self.pagination)
+
+        self._page = 0
+        self._page_size = _PAGE
 
     # ------------------------------------------------------------- loading
 
@@ -150,8 +158,9 @@ class StockMovementsView(QWidget):
         for category in categories:
             self.category_combo.addItem(category["name"], category["id"])
 
-    def refresh(self) -> None:
-        """Reload the ledger from the server with the current filters."""
+    def _load_page(self, page: int) -> None:
+        self._page = page
+        offset = page * self._page_size
         self._loaded_once = True
         self._ensure_categories()
         self.stack.show_loading()
@@ -165,16 +174,25 @@ class StockMovementsView(QWidget):
                 type=self.type_combo.currentData() or None,
                 date_from=date_from,
                 date_to=date_to,
-                limit=_PAGE,
+                limit=self._page_size,
+                offset=offset,
             ),
             self._on_loaded,
             self._on_error,
         )
 
+    def refresh(self) -> None:
+        """Reload the ledger from the server with the current filters."""
+        self._load_page(0)
+
     def _on_loaded(self, page: object) -> None:
         if not shiboken6.isValid(self):
             return
         self.movements = page.get("items", []) if isinstance(page, dict) else []
+        total = page.get("total", 0) if isinstance(page, dict) else 0
+        import math
+        total_pages = max(1, math.ceil(total / self._page_size))
+        self.pagination.set_state(self._page, total_pages)
         self._render()
 
     def _on_error(self, err) -> None:

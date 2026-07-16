@@ -85,3 +85,6 @@ class ProductReadWithCost(ProductRead):
     cost_price: Money
 
 
+class ProductPage(BaseModel):
+    items: list[ProductRead]
+    total: int

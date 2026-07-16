@@ -138,6 +138,7 @@ class CustomersScreen(QWidget):
         edit_button = QPushButton(
             qta.icon("fa5s.pen", color=NEUTRAL["600"]), strings.EDIT
         )
+        edit_button.setObjectName("Ghost")
         edit_button.clicked.connect(self._edit_customer)
         head.addWidget(edit_button)
         detail.addLayout(head)

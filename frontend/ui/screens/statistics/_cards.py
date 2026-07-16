@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui import strings
-from ui.styles.tokens import ICON_SIZES, NEUTRAL, RADIUS, SPACING
+from ui.styles.tokens import ICON_SIZES, SPACING
 from ui.widgets.badge import DeltaChip
 from ui.widgets.card import Card
 from ui.widgets.modal import ModalDialog
@@ -32,7 +32,9 @@ class KpiCard(Card):
     """Headline metric: colored icon chip + caption, big value, and an
     insight line that can carry a comparison chip (delta vs previous)."""
 
-    def __init__(self, caption, icon, color, kpi_type, show_delta=False, parent=None) -> None:
+    def __init__(
+        self, caption, icon, color, kpi_type, show_delta=False, parent=None
+    ) -> None:
         super().__init__(parent)
         top = QHBoxLayout()
         top.setSpacing(SPACING["sm"])
@@ -124,7 +126,7 @@ class RankBars(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(SPACING["sm"])
         name = QLabel(label)
-        name.setFixedWidth(112)
+        name.setMinimumWidth(112)
         name.setStyleSheet("font-weight: 600; background: transparent;")
         layout.addWidget(name)
 
@@ -145,8 +147,10 @@ class RankBars(QWidget):
 
         value = QLabel(value_text)
         value.setObjectName("Muted")
-        value.setFixedWidth(72)
-        value.setAlignment(Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter)
+        value.setMinimumWidth(72)
+        value.setAlignment(
+            Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter
+        )
         layout.addWidget(value)
         return row
 

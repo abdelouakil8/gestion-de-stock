@@ -121,6 +121,7 @@ LOGIN_GREETING = "مرحبًا، {name}"
 # ======================================================================
 
 FEATURE_TOUR_TITLE = "استكشاف التطبيق"
+FEATURE_TOUR_RESTART = "إعادة تشغيل الجولة"
 FEATURE_TOUR_WELCOME = "مرحبًا بك في إدارة المخزون ونقاط البيع!"
 FEATURE_TOUR_CHECKOUT_TITLE = "نقطة البيع (الكاشير)"
 FEATURE_TOUR_CHECKOUT_DESC = (

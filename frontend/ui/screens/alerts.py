@@ -100,6 +100,7 @@ class _CreditRow(QWidget):
             qta.icon("fa5s.hand-holding-usd", color=NEUTRAL["600"]),
             strings.CUSTOMER_RECORD_PAYMENT,
         )
+        pay.setObjectName("Ghost")
         pay.clicked.connect(lambda: on_pay(credit))
         layout.addWidget(pay)
 
@@ -192,6 +193,7 @@ class AlertsScreen(QWidget):
         header.addWidget(title)
         header.addStretch(1)
         refresh = QPushButton(strings.REFRESH)
+        refresh.setObjectName("Ghost")
         refresh.clicked.connect(self.refresh)
         header.addWidget(refresh)
         layout.addLayout(header)

@@ -115,6 +115,8 @@ class LoginDialog(QDialog):
     # -------------------------------------------------------------- verify
 
     def _verify(self) -> None:
+        if not self.open_button.isEnabled():
+            return
         pin = self.pin_input.text().strip()
         if not pin:
             return

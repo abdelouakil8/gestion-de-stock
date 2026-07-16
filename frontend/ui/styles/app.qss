@@ -352,6 +352,17 @@ QPushButton#Ghost:pressed { background: $border_light; }
 QPushButton#Ghost:focus { background: $row_hover; }
 QPushButton#Ghost:disabled { color: $text_disabled; background: transparent; }
 
+QPushButton#Secondary {
+    background: transparent;
+    border: 1px solid $border;
+    color: $text_secondary;
+    padding: 7px 14px;
+}
+QPushButton#Secondary:hover { background: $row_hover; color: $text; border-color: $border_strong; }
+QPushButton#Secondary:pressed { background: $border_light; }
+QPushButton#Secondary:focus { border-color: $focus_ring; }
+QPushButton#Secondary:disabled { color: $text_disabled; border-color: $border_light; background: transparent; }
+
 /* Big money button (Encaisser) */
 QPushButton#Pay {
     background: $primary;

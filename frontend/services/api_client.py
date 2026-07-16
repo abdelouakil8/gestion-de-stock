@@ -206,12 +206,23 @@ class ApiClient:
 
     # ------------------------------------------------------------- products
 
-    def list_products(self, store_id: str) -> list[dict]:
+    def list_products(
+        self,
+        store_id: str,
+        limit: int | None = None,
+        offset: int = 0,
+        category_id: str | None = None,
+    ) -> dict:
+        params: dict = {"store_id": store_id, "offset": offset}
+        if limit is not None:
+            params["limit"] = limit
+        if category_id:
+            params["category_id"] = category_id
         return self._cached(
-            f"products:{store_id}",
+            f"products:{store_id}:limit={limit}:offset={offset}:cat={category_id}",
             "GET",
             "/products",
-            params={"store_id": store_id},
+            params=params,
         )
 
     def search_products(
@@ -219,12 +230,13 @@ class ApiClient:
         store_id: str,
         query: str | None = None,
         limit: int | None = None,
+        offset: int = 0,
         active_only: bool = False,
-    ) -> list[dict]:
+    ) -> dict:
         """Smart product search. Without query/limit/active_only this returns
         the full ordered catalog (same as list_products); with `query` it
         returns ranked results (exact > prefix > substring > fuzzy)."""
-        params: dict = {"store_id": store_id}
+        params: dict = {"store_id": store_id, "offset": offset}
         if query:
             params["q"] = query
         if limit is not None:
@@ -232,7 +244,6 @@ class ApiClient:
         if active_only:
             params["active_only"] = True
         return self._request("GET", "/products", params=params)
-
     def get_product_by_barcode(self, store_id: str, barcode: str) -> dict:
         return self._request(
             "GET", f"/products/by-barcode/{barcode}", params={"store_id": store_id}

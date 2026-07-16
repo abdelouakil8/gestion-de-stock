@@ -121,6 +121,7 @@ def _search(
     limit: int,
     active_only: bool,
     with_recency: bool,
+    category_id: UUID | None = None,
 ) -> list:
     """Cœur partagé produits/clients (voir docstring du module)."""
     active_col = getattr(model, "is_active", None)
@@ -129,6 +130,8 @@ def _search(
         stmt = stmt.where(model.store_id == store_id, model.deleted_at.is_(None))
         if active_only and active_col is not None:
             stmt = stmt.where(active_col.is_(True))
+        if category_id is not None and getattr(model, "category_id", None) is not None:
+            stmt = stmt.where(model.category_id == category_id)
         return stmt
 
     # (a) Pas de requête -> liste de base, triée par nom, plafonnée à limit.
@@ -202,8 +205,11 @@ def _add_fuzzy_candidates(
     except ImportError:
         return candidates
 
+    if len(norm) < 3:
+        return candidates
+
     all_rows = db.execute(
-        base_filters(select(model.id, model.search_text, model.name))
+        base_filters(select(model.id, model.search_text, model.name)).limit(2000)
     ).all()
     by_id = {row.id: (row.search_text, row.name) for row in all_rows}
     choices = {rid: text for rid, (text, _name) in by_id.items()}
@@ -245,6 +251,7 @@ def search_products(
     query: str | None,
     limit: int = 20,
     active_only: bool = False,
+    category_id: UUID | None = None,
 ) -> list[Product]:
     """Recherche intelligente de produits (préfiltre LIKE + repli flou)."""
     return _search(
@@ -255,4 +262,5 @@ def search_products(
         limit=limit,
         active_only=active_only,
         with_recency=False,
+        category_id=category_id,
     )

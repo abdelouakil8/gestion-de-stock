@@ -327,8 +327,9 @@ class SuppliersScreen(QWidget):
         self.filter_supplier.setCurrentIndex(index if index >= 0 else 0)
         self.filter_supplier.blockSignals(False)
 
-    def _on_products(self, products):
-        self._product_names = {str(p["id"]): p["name"] for p in (products or [])}
+    def _on_products(self, products_page: dict):
+        items = products_page.get("items", []) if isinstance(products_page, dict) else []
+        self._product_names = {str(p["id"]): p["name"] for p in items}
 
     def _on_orders(self, orders):
         self._all_orders = list(orders or [])

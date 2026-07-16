@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QPushButton, QWidget
 
 from ui import strings
+from ui.styles.tokens import SPACING
 
 LEVELS = ["detail", "gros", "super_gros"]
 
@@ -39,8 +40,10 @@ class PriceLevelSelector(QWidget):
         if allow_manual:
             self._levels.append(MANUAL_LEVEL)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(3, 3, 3, 3)
-        layout.setSpacing(3)
+        layout.setContentsMargins(
+            SPACING["xs"], SPACING["xs"], SPACING["xs"], SPACING["xs"]
+        )
+        layout.setSpacing(SPACING["xs"])
 
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)

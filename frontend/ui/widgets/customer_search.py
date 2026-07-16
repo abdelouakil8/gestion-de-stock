@@ -195,6 +195,9 @@ class CustomerSearchBox(QWidget):
     # ------------------------------------------------------------ popup mgmt
 
     def _show_popup(self) -> None:
+        # Anchor the popup's leading edge to the field's leading edge.
+        # Under RTL, QPoint(0, height) maps to the visual right edge of the
+        # search field, so the popup stays correctly aligned.
         below = self.search.mapToGlobal(QPoint(0, self.search.height() + 2))
         self._popup.setFixedWidth(self.search.width())
         self._popup.move(below)

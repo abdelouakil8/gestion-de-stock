@@ -127,6 +127,7 @@ LOGIN_GREETING = "Bonjour, {name}"
 # ======================================================================
 
 FEATURE_TOUR_TITLE = "Découvrir l'application"
+FEATURE_TOUR_RESTART = "Redémarrer la visite guidée"
 FEATURE_TOUR_WELCOME = "Bienvenue sur Gestion Stock POS !"
 FEATURE_TOUR_CHECKOUT_TITLE = "Caisse (Point de vente)"
 FEATURE_TOUR_CHECKOUT_DESC = (

@@ -156,6 +156,7 @@ class SettingsScreen(QWidget):
         test_print = QPushButton(
             qta.icon("fa5s.print", color=NEUTRAL["600"]), strings.SETTINGS_PRINTER_TEST
         )
+        test_print.setObjectName("Ghost")
         test_print.clicked.connect(self._test_print)
         btn_row.addWidget(test_print)
 
@@ -163,6 +164,7 @@ class SettingsScreen(QWidget):
             qta.icon("fa5s.box-open", color=NEUTRAL["600"]),
             strings.SETTINGS_PRINTER_DRAWER,
         )
+        self.drawer_btn.setObjectName("Ghost")
         self.drawer_btn.clicked.connect(self._kick_drawer)
         btn_row.addWidget(self.drawer_btn)
         btn_row.addStretch(1)
@@ -181,11 +183,13 @@ class SettingsScreen(QWidget):
         self.backup_create_btn = QPushButton(
             qta.icon("fa5s.download", color=NEUTRAL["600"]), strings.BACKUP_CREATE
         )
+        self.backup_create_btn.setObjectName("Ghost")
         self.backup_create_btn.clicked.connect(self._create_backup)
         backup_row.addWidget(self.backup_create_btn)
         self.backup_restore_btn = QPushButton(
             qta.icon("fa5s.upload", color=NEUTRAL["600"]), strings.BACKUP_RESTORE
         )
+        self.backup_restore_btn.setObjectName("Ghost")
         self.backup_restore_btn.clicked.connect(self._restore_backup)
         backup_row.addWidget(self.backup_restore_btn)
         backup_row.addStretch(1)
@@ -200,8 +204,9 @@ class SettingsScreen(QWidget):
         tour_hint.setObjectName("FieldHint")
         tour_card.body.addWidget(tour_hint)
         tour_btn = QPushButton(
-            qta.icon("fa5s.play", color=NEUTRAL["600"]), "Démarrer la visite"
+            qta.icon("fa5s.play", color=NEUTRAL["600"]), strings.FEATURE_TOUR_RESTART
         )
+        tour_btn.setObjectName("Ghost")
         tour_btn.clicked.connect(self._start_tour)
         tour_card.body.addWidget(tour_btn, alignment=Qt.AlignmentFlag.AlignLeading)
         left.addWidget(tour_card)
@@ -247,6 +252,7 @@ class SettingsScreen(QWidget):
             swatch_row.addWidget(swatch)
             self._swatches[color] = swatch
         custom = QPushButton(strings.SETTINGS_ACCENT_CUSTOM)
+        custom.setObjectName("Ghost")
         custom.clicked.connect(self._pick_custom_accent)
         swatch_row.addWidget(custom)
         swatch_row.addStretch(1)
@@ -314,7 +320,9 @@ class SettingsScreen(QWidget):
         )
         reset_button.setObjectName("Danger")
         reset_button.clicked.connect(self._factory_reset)
-        danger_card.body.addWidget(reset_button, alignment=Qt.AlignmentFlag.AlignLeading)
+        danger_card.body.addWidget(
+            reset_button, alignment=Qt.AlignmentFlag.AlignLeading
+        )
         left.addWidget(danger_card)
         left.addStretch(1)
 

@@ -354,7 +354,8 @@ class CheckoutScreen(QWidget):
         if query != self.search.text().strip():
             return
         self.results.clear()
-        matches = list(products or [])[:8]
+        matches = products.get("items", []) if products else []
+        matches = matches[:8]
         for product in matches:
             item = QListWidgetItem()
             row = _ResultRow(product)
